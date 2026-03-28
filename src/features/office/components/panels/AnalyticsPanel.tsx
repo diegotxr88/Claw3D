@@ -17,12 +17,12 @@ import {
 import type { StudioSettingsCoordinator } from "@/lib/studio/coordinator";
 
 const formatPercent = (value: number | null | undefined) => {
-  if (value === null || value === undefined) return "n/a";
+  if (value === null || value === undefined) return "n/d";
   return `${Math.round(value * 100)}%`;
 };
 
 const formatDuration = (valueMs: number | null | undefined) => {
-  if (!valueMs) return "n/a";
+  if (!valueMs) return "n/d";
   const seconds = Math.round(valueMs / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -99,7 +99,7 @@ const DatePickerField = ({
           type="button"
           onClick={() => openNativeDatePicker(inputRef.current)}
           className="absolute inset-y-0 right-0 flex w-8 items-center justify-center text-white/40 transition-colors hover:text-cyan-200"
-          aria-label={`Open ${label.toLowerCase()} calendar`}
+          aria-label={`Abrir calendario de ${label.toLowerCase()}`}
         >
           <CalendarDays className="h-3.5 w-3.5" />
         </button>
@@ -162,31 +162,31 @@ export function AnalyticsPanel({
     <section className="flex h-full min-h-0 flex-col">
       <div className="border-b border-cyan-500/10 px-4 py-3">
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
-          Analytics
+          Analises
         </div>
         <div className="mt-1 font-mono text-[11px] text-white/40">
-          Real usage, spend, and agent trust metrics for headquarters.
+          Uso real, custos e metricas de confianca dos agentes.
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         <div className="grid grid-cols-2 gap-2">
-          <DatePickerField label="Start" value={startDate} onChange={setStartDate} />
-          <DatePickerField label="End" value={endDate} onChange={setEndDate} />
+          <DatePickerField label="Inicio" value={startDate} onChange={setStartDate} />
+          <DatePickerField label="Fim" value={endDate} onChange={setEndDate} />
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2">
           <div className="font-mono text-[10px] text-white/35">
             {usage.lastRefreshedAt
-              ? `Last refresh ${new Date(usage.lastRefreshedAt).toLocaleTimeString()}`
-              : "No analytics snapshot yet"}
+              ? `Ultima atualizacao ${new Date(usage.lastRefreshedAt).toLocaleTimeString()}`
+              : "Nenhum snapshot de analises ainda"}
           </div>
           <button
             type="button"
             onClick={() => void usage.refresh()}
             className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-200 transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
           >
-            Refresh
+            Atualizar
           </button>
         </div>
 
@@ -206,76 +206,76 @@ export function AnalyticsPanel({
           </div>
         ) : settingsLoaded ? (
           <div className="mt-3 rounded border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 font-mono text-[11px] text-emerald-100">
-            Budgets are within threshold.
+            Orcamentos dentro do limite.
           </div>
         ) : null}
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <StatCard
-            label="Total Spend"
+            label="Gasto Total"
             value={formatCurrency(usage.totals.totalCost)}
-            hint="Selected range."
+            hint="Periodo selecionado."
           />
           <StatCard
-            label="Total Tokens"
+            label="Tokens Totais"
             value={formatNumber(usage.totals.totalTokens)}
-            hint="Input + output + cache."
+            hint="Entrada + saida + cache."
           />
           <StatCard
-            label="Success Rate"
+            label="Taxa de Sucesso"
             value={formatPercent(performance.fleet.successRate)}
-            hint="Completed runs only."
+            hint="So execucoes concluidas."
           />
           <StatCard
-            label="Avg Runtime"
+            label="Tempo Medio"
             value={formatDuration(performance.fleet.avgRuntimeMs)}
-            hint="Session-local run history."
+            hint="Historico local da sessao."
           />
         </div>
 
         <div className="mt-5 rounded border border-white/8 bg-white/[0.03] px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
-            Budget Limits
+            Limites de Orcamento
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
-              <span className="font-mono text-[10px] text-white/35">Daily USD</span>
+              <span className="font-mono text-[10px] text-white/35">USD diario</span>
               <input
                 value={formatBudgetInput(budgets.dailySpendLimitUsd)}
                 onChange={(event) =>
                   updateBudget("dailySpendLimitUsd", parseBudgetInput(event.target.value))
                 }
-                placeholder="No limit"
+                placeholder="Sem limite"
                 inputMode="decimal"
                 className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none placeholder:text-white/20"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="font-mono text-[10px] text-white/35">Monthly USD</span>
+              <span className="font-mono text-[10px] text-white/35">USD mensal</span>
               <input
                 value={formatBudgetInput(budgets.monthlySpendLimitUsd)}
                 onChange={(event) =>
                   updateBudget("monthlySpendLimitUsd", parseBudgetInput(event.target.value))
                 }
-                placeholder="No limit"
+                placeholder="Sem limite"
                 inputMode="decimal"
                 className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none placeholder:text-white/20"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="font-mono text-[10px] text-white/35">Per-agent USD</span>
+              <span className="font-mono text-[10px] text-white/35">USD por agente</span>
               <input
                 value={formatBudgetInput(budgets.perAgentSoftLimitUsd)}
                 onChange={(event) =>
                   updateBudget("perAgentSoftLimitUsd", parseBudgetInput(event.target.value))
                 }
-                placeholder="Soft limit"
+                placeholder="Limite suave"
                 inputMode="decimal"
                 className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none placeholder:text-white/20"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="font-mono text-[10px] text-white/35">Alert threshold %</span>
+              <span className="font-mono text-[10px] text-white/35">Limite de alerta %</span>
               <input
                 value={String(budgets.alertThresholdPct)}
                 onChange={(event) =>
@@ -293,13 +293,13 @@ export function AnalyticsPanel({
 
         <div className="mt-5 rounded border border-white/8 bg-white/[0.03] px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
-            Daily Cost
+            Custo Diario
           </div>
           {usage.loading ? (
-            <div className="mt-3 font-mono text-[11px] text-white/40">Loading usage data.</div>
+            <div className="mt-3 font-mono text-[11px] text-white/40">Carregando dados de uso.</div>
           ) : usage.costDaily.length === 0 ? (
             <div className="mt-3 font-mono text-[11px] text-white/35">
-              No cost data in the selected range.
+              Nenhum dado de custo no periodo selecionado.
             </div>
           ) : (
             <div className="mt-3 flex items-end gap-1">
@@ -328,20 +328,20 @@ export function AnalyticsPanel({
 
           <div className="mt-4 rounded border border-white/8 bg-black/25 px-3 py-3">
             <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-              Cost Breakdown
+              Composicao de Custos
             </div>
             <div className="mt-2 space-y-1 font-mono text-[11px] text-white/70">
-              <div>Input: {formatCurrency(usage.totals.inputCost)}.</div>
-              <div>Output: {formatCurrency(usage.totals.outputCost)}.</div>
-              <div>Cache read: {formatCurrency(usage.totals.cacheReadCost)}.</div>
-              <div>Cache write: {formatCurrency(usage.totals.cacheWriteCost)}.</div>
+              <div>Entrada: {formatCurrency(usage.totals.inputCost)}.</div>
+              <div>Saida: {formatCurrency(usage.totals.outputCost)}.</div>
+              <div>Leitura de cache: {formatCurrency(usage.totals.cacheReadCost)}.</div>
+              <div>Gravacao de cache: {formatCurrency(usage.totals.cacheWriteCost)}.</div>
             </div>
           </div>
         </div>
 
         <div className="mt-5 rounded border border-white/8 bg-white/[0.03] px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
-            Top Agents By Spend
+            Agentes com Maior Gasto
           </div>
           <div className="mt-3 space-y-2">
             {usage.aggregates.byAgent.slice(0, 6).map((entry) => (
@@ -358,14 +358,14 @@ export function AnalyticsPanel({
               </button>
             ))}
             {usage.aggregates.byAgent.length === 0 ? (
-              <div className="font-mono text-[11px] text-white/35">No agent spend data yet.</div>
+              <div className="font-mono text-[11px] text-white/35">Ainda nao ha dados de gasto por agente.</div>
             ) : null}
           </div>
         </div>
 
         <div className="mt-5 rounded border border-white/8 bg-white/[0.03] px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
-            Model Breakdown
+            Uso por Modelo
           </div>
           <div className="mt-3 space-y-2">
             {usage.aggregates.byModel.slice(0, 6).map((entry) => (
@@ -374,7 +374,7 @@ export function AnalyticsPanel({
                 className="flex items-center justify-between rounded border border-white/8 bg-black/25 px-3 py-2"
               >
                 <span className="font-mono text-[11px] text-white/80">
-                  {entry.provider ?? "unknown"} / {entry.model ?? "unknown"}
+                  {entry.provider ?? "desconhecido"} / {entry.model ?? "desconhecido"}
                 </span>
                 <span className="font-mono text-[11px] text-white/55">
                   {formatCurrency(entry.totals.totalCost)}
@@ -382,35 +382,35 @@ export function AnalyticsPanel({
               </div>
             ))}
             {usage.aggregates.byModel.length === 0 ? (
-              <div className="font-mono text-[11px] text-white/35">No model usage data yet.</div>
+              <div className="font-mono text-[11px] text-white/35">Ainda nao ha dados de uso por modelo.</div>
             ) : null}
           </div>
         </div>
 
         <div className="mt-5 rounded border border-white/8 bg-white/[0.03] px-3 py-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
-            Performance
+            Desempenho
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <StatCard
-              label="Approvals"
+              label="Aprovacoes"
               value={formatNumber(approvalMetrics.totals.requestedCount)}
-              hint="Session-local approval requests."
+              hint="Pedidos locais da sessao."
             />
             <StatCard
-              label="Intervention Rate"
+              label="Taxa de Intervencao"
               value={formatPercent(performance.fleet.interventionRate)}
-              hint="Approvals per observed run."
+              hint="Aprovacoes por execucao observada."
             />
             <StatCard
-              label="Tool Calls"
+              label="Chamadas de Ferramenta"
               value={formatNumber(performance.fleet.totalToolCalls)}
-              hint="Current transcript state."
+              hint="Estado atual da transcricao."
             />
             <StatCard
-              label="Completed Runs"
+              label="Execucoes Concluidas"
               value={formatNumber(performance.fleet.completedRuns)}
-              hint="In-memory office run log."
+              hint="Log do escritorio em memoria."
             />
           </div>
 
@@ -427,20 +427,20 @@ export function AnalyticsPanel({
                     {row.agentName}
                   </span>
                   <span className="font-mono text-[10px] text-white/40">
-                    {row.totalRuns} runs
+                    {row.totalRuns} execucoes
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[10px] text-white/55">
-                  <div>Success: {formatPercent(row.successRate)}.</div>
-                  <div>Avg runtime: {formatDuration(row.avgRuntimeMs)}.</div>
-                  <div>Tool calls: {formatNumber(row.toolCalls)}.</div>
-                  <div>Approvals: {formatNumber(row.approvalRequestedCount)}.</div>
+                  <div>Sucesso: {formatPercent(row.successRate)}.</div>
+                  <div>Tempo medio: {formatDuration(row.avgRuntimeMs)}.</div>
+                  <div>Ferramentas: {formatNumber(row.toolCalls)}.</div>
+                  <div>Aprovacoes: {formatNumber(row.approvalRequestedCount)}.</div>
                 </div>
               </button>
             ))}
             {performance.rows.length === 0 ? (
               <div className="font-mono text-[11px] text-white/35">
-                No performance data is available yet.
+                Ainda nao ha dados de desempenho.
               </div>
             ) : null}
           </div>

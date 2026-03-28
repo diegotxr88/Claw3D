@@ -27,10 +27,10 @@ type TemplateDefinition = {
 const PLAYBOOK_TEMPLATES: TemplateDefinition[] = [
   {
     id: "daily-briefing",
-    name: "Daily Morning Briefing",
-    description: "Every day at 9am. Summarize priorities, blockers, and what changed overnight.",
+    name: "Briefing Matinal Diario",
+    description: "Todos os dias as 9h. Resume prioridades, bloqueios e o que mudou durante a noite.",
     buildInput: (agent, customName) => ({
-      name: customName || "Daily Morning Briefing",
+      name: customName || "Briefing Matinal Diario",
       agentId: agent.agentId,
       sessionKey: agent.sessionKey,
       enabled: true,
@@ -40,17 +40,17 @@ const PLAYBOOK_TEMPLATES: TemplateDefinition[] = [
       payload: {
         kind: "agentTurn",
         message:
-          "Create a concise morning briefing for headquarters. Summarize current priorities, blocked work, recent notable changes, and the next recommended actions.",
+          "Crie um briefing matinal conciso para o QG. Resuma prioridades atuais, trabalhos bloqueados, mudancas recentes relevantes e os proximos passos recomendados.",
         thinking: "high",
       },
     }),
   },
   {
     id: "nightly-code-review",
-    name: "Nightly Code Review Digest",
-    description: "Every night at midnight. Review the day and summarize risky changes or regressions.",
+    name: "Resumo Noturno de Revisao",
+    description: "Todas as noites a meia-noite. Revise o dia e resuma mudancas arriscadas ou regressoes.",
     buildInput: (agent, customName) => ({
-      name: customName || "Nightly Code Review Digest",
+      name: customName || "Resumo Noturno de Revisao",
       agentId: agent.agentId,
       sessionKey: agent.sessionKey,
       enabled: true,
@@ -60,17 +60,17 @@ const PLAYBOOK_TEMPLATES: TemplateDefinition[] = [
       payload: {
         kind: "agentTurn",
         message:
-          "Review the latest work available to you and produce a digest of risky changes, unresolved questions, and follow-up recommendations for the team.",
+          "Revise o trabalho mais recente disponivel e produza um resumo de mudancas arriscadas, questoes em aberto e recomendacoes de acompanhamento para a equipe.",
         thinking: "high",
       },
     }),
   },
   {
     id: "hourly-health-check",
-    name: "Hourly Health Check",
-    description: "Every 60 minutes. Report runtime health, failures, and anything that needs intervention.",
+    name: "Verificacao Horaria",
+    description: "A cada 60 minutos. Relate a saude do runtime, falhas e qualquer coisa que precise de intervencao.",
     buildInput: (agent, customName) => ({
-      name: customName || "Hourly Health Check",
+      name: customName || "Verificacao Horaria",
       agentId: agent.agentId,
       sessionKey: agent.sessionKey,
       enabled: true,
@@ -80,17 +80,17 @@ const PLAYBOOK_TEMPLATES: TemplateDefinition[] = [
       payload: {
         kind: "agentTurn",
         message:
-          "Run a health check. Summarize your current status, errors, blocked tasks, pending approvals, and whether a human needs to step in.",
+          "Execute uma verificacao de saude. Resuma seu status atual, erros, tarefas bloqueadas, aprovacoes pendentes e se um humano precisa intervir.",
         thinking: "medium",
       },
     }),
   },
   {
     id: "weekly-progress-report",
-    name: "Weekly Progress Report",
-    description: "Every Monday at 8am. Roll up wins, unfinished work, and next steps.",
+    name: "Relatorio Semanal de Progresso",
+    description: "Toda segunda as 8h. Consolide ganhos, trabalho pendente e proximos passos.",
     buildInput: (agent, customName) => ({
-      name: customName || "Weekly Progress Report",
+      name: customName || "Relatorio Semanal de Progresso",
       agentId: agent.agentId,
       sessionKey: agent.sessionKey,
       enabled: true,
@@ -100,17 +100,17 @@ const PLAYBOOK_TEMPLATES: TemplateDefinition[] = [
       payload: {
         kind: "agentTurn",
         message:
-          "Write a weekly progress report for headquarters. Include completed work, unfinished work, risks, and the most important next steps.",
+          "Escreva um relatorio semanal de progresso para o QG. Inclua trabalhos concluidos, pendentes, riscos e os proximos passos mais importantes.",
         thinking: "high",
       },
     }),
   },
   {
     id: "continuous-monitor",
-    name: "Continuous Monitor",
-    description: "Every 15 minutes. Watch for drift, silent failures, or anything unusual.",
+    name: "Monitor Continuo",
+    description: "A cada 15 minutos. Observe desvios, falhas silenciosas ou qualquer coisa fora do normal.",
     buildInput: (agent, customName) => ({
-      name: customName || "Continuous Monitor",
+      name: customName || "Monitor Continuo",
       agentId: agent.agentId,
       sessionKey: agent.sessionKey,
       enabled: true,
@@ -120,7 +120,7 @@ const PLAYBOOK_TEMPLATES: TemplateDefinition[] = [
       payload: {
         kind: "agentTurn",
         message:
-          "Monitor your current context and report only if you detect unusual behavior, blocked progress, repeated failures, or opportunities that need attention.",
+          "Monitore seu contexto atual e relate apenas se detectar comportamento incomum, progresso bloqueado, falhas repetidas ou oportunidades que exijam atencao.",
         thinking: "medium",
       },
     }),
@@ -128,7 +128,7 @@ const PLAYBOOK_TEMPLATES: TemplateDefinition[] = [
 ];
 
 const formatRelativeDateTime = (timestampMs?: number) => {
-  if (!timestampMs || !Number.isFinite(timestampMs)) return "Unknown";
+  if (!timestampMs || !Number.isFinite(timestampMs)) return "Desconhecido";
   return new Date(timestampMs).toLocaleString([], {
     month: "short",
     day: "numeric",
@@ -227,7 +227,7 @@ export function PlaybooksPanel({
       const result = await listCronJobs(client, { includeDisabled: true });
       setJobs(sortCronJobsByUpdatedAt(result.jobs));
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load playbooks.";
+      const message = err instanceof Error ? err.message : "Falha ao carregar rotinas.";
       setError(message);
       if (!isGatewayDisconnectLikeError(err)) {
         console.error(message);
@@ -245,7 +245,7 @@ export function PlaybooksPanel({
     if (!activeTemplate) return;
     const agent = agentById.get(selectedAgentId);
     if (!agent) {
-      setError("Pick an agent before launching a playbook.");
+      setError("Escolha um agente antes de iniciar uma rotina.");
       return;
     }
 
@@ -254,13 +254,13 @@ export function PlaybooksPanel({
     setActionMessage(null);
     try {
       await createCronJob(client, activeTemplate.buildInput(agent, nameOverride.trim()));
-      setActionMessage(`Created "${nameOverride.trim() || activeTemplate.name}".`);
+      setActionMessage(`Criado "${nameOverride.trim() || activeTemplate.name}".`);
       setSelectedTemplateId(null);
       setSelectedAgentId("");
       setNameOverride("");
       await loadJobs();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create playbook.";
+      const message = err instanceof Error ? err.message : "Falha ao criar rotina.";
       setError(message);
     } finally {
       setCreateBusy(false);
@@ -274,10 +274,10 @@ export function PlaybooksPanel({
       setActionMessage(null);
       try {
         const result = await runCronJobNow(client, jobId);
-        setActionMessage(result.ok ? "Playbook triggered." : "Playbook trigger failed.");
+        setActionMessage(result.ok ? "Rotina disparada." : "Falha ao disparar a rotina.");
         await loadJobs();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to run playbook.");
+        setError(err instanceof Error ? err.message : "Falha ao executar a rotina.");
       } finally {
         setRunBusyJobId(null);
       }
@@ -292,10 +292,10 @@ export function PlaybooksPanel({
       setActionMessage(null);
       try {
         const result = await removeCronJob(client, jobId);
-        setActionMessage(result.ok && result.removed ? "Playbook removed." : "Playbook was not removed.");
+        setActionMessage(result.ok && result.removed ? "Rotina removida." : "A rotina nao foi removida.");
         await loadJobs();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete playbook.");
+        setError(err instanceof Error ? err.message : "Falha ao excluir a rotina.");
       } finally {
         setDeleteBusyJobId(null);
       }
@@ -324,9 +324,9 @@ export function PlaybooksPanel({
           jql: jiraJql.trim(),
         },
       });
-      setActionMessage("Standup settings saved.");
+      setActionMessage("Configuracoes da reuniao salvas.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save standup settings.");
+      setError(err instanceof Error ? err.message : "Falha ao salvar as configuracoes da reuniao.");
     }
   }, [
     jiraApiToken,
@@ -345,7 +345,7 @@ export function PlaybooksPanel({
 
   const handleSaveManualNotes = useCallback(async () => {
     if (!standupAgentId) {
-      setError("Pick an agent before saving standup notes.");
+      setError("Escolha um agente antes de salvar as anotacoes da reuniao.");
       return;
     }
     setError(null);
@@ -357,9 +357,9 @@ export function PlaybooksPanel({
         blockers: manualBlockers.trim(),
         note: manualNote.trim(),
       });
-      setActionMessage("Standup notes saved.");
+      setActionMessage("Anotacoes da reuniao salvas.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save standup notes.");
+      setError(err instanceof Error ? err.message : "Falha ao salvar as anotacoes da reuniao.");
     }
   }, [
     manualBlockers,
@@ -376,10 +376,10 @@ export function PlaybooksPanel({
         <div className="flex items-center justify-between gap-2">
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
-              Playbooks
+              Rotinas
             </div>
             <div className="mt-1 font-mono text-[11px] text-white/40">
-              Launch reusable schedules for the whole headquarters.
+              Dispare agendas reutilizaveis para todo o QG.
             </div>
           </div>
           <button
@@ -387,7 +387,7 @@ export function PlaybooksPanel({
             onClick={() => void loadJobs()}
             className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-200 transition-colors hover:border-cyan-400/40 hover:text-cyan-100"
           >
-            Refresh
+            Atualizar
           </button>
         </div>
         {error ? <div className="mt-2 font-mono text-[11px] text-rose-300">{error}</div> : null}
@@ -399,16 +399,16 @@ export function PlaybooksPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-b border-cyan-500/10 px-4 py-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-            Active Jobs
+            Rotinas Ativas
           </div>
           <div className="mt-3 space-y-2">
             {loading ? (
-              <div className="font-mono text-[11px] text-white/40">Loading scheduled jobs.</div>
+              <div className="font-mono text-[11px] text-white/40">Carregando rotinas agendadas.</div>
             ) : jobs.length === 0 ? (
-              <div className="font-mono text-[11px] text-white/35">No active playbooks yet.</div>
+              <div className="font-mono text-[11px] text-white/35">Ainda nao ha rotinas ativas.</div>
             ) : (
               jobs.map((job) => {
-                const agentName = agentById.get(job.agentId ?? "")?.name || job.agentId || "Unknown";
+                const agentName = agentById.get(job.agentId ?? "")?.name || job.agentId || "Desconhecido";
                 return (
                   <div
                     key={job.id}
@@ -422,14 +422,14 @@ export function PlaybooksPanel({
                         <div className="mt-1 font-mono text-[11px] text-white/45">{agentName}</div>
                       </div>
                       <div className="shrink-0 rounded border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-cyan-200">
-                        {job.state.lastStatus ?? "ready"}
+                        {job.state.lastStatus ?? "pronto"}
                       </div>
                     </div>
 
                     <div className="mt-3 space-y-1 font-mono text-[11px] text-white/65">
                       <div>{formatCronSchedule(job.schedule)}</div>
-                      <div>Next run: {formatRelativeDateTime(job.state.nextRunAtMs)}</div>
-                      <div>Last run: {formatRelativeDateTime(job.state.lastRunAtMs)}</div>
+                      <div>Proxima execucao: {formatRelativeDateTime(job.state.nextRunAtMs)}</div>
+                      <div>Ultima execucao: {formatRelativeDateTime(job.state.lastRunAtMs)}</div>
                     </div>
 
                     <div className="mt-3 flex gap-2">
@@ -439,7 +439,7 @@ export function PlaybooksPanel({
                         disabled={runBusyJobId === job.id || deleteBusyJobId === job.id}
                         className="rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-amber-200 transition-colors hover:border-amber-400/50 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {runBusyJobId === job.id ? "Running" : "Run now"}
+                        {runBusyJobId === job.id ? "Executando" : "Executar agora"}
                       </button>
                       <button
                         type="button"
@@ -447,7 +447,7 @@ export function PlaybooksPanel({
                         disabled={deleteBusyJobId === job.id || runBusyJobId === job.id}
                         className="rounded border border-rose-500/25 bg-rose-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-rose-200 transition-colors hover:border-rose-400/50 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {deleteBusyJobId === job.id ? "Deleting" : "Delete"}
+                        {deleteBusyJobId === job.id ? "Excluindo" : "Excluir"}
                       </button>
                     </div>
                   </div>
@@ -462,10 +462,10 @@ export function PlaybooksPanel({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-200/85">
-                  Automated Standup
+                  Reuniao Automatica
                 </div>
                 <div className="mt-1 font-mono text-[11px] leading-5 text-white/50">
-                  Configure the daily meeting, Jira source, and manual notes board.
+                  Configure a reuniao diaria, a fonte Jira e o quadro de anotacoes manuais.
                 </div>
               </div>
               <button
@@ -473,7 +473,7 @@ export function PlaybooksPanel({
                 onClick={() => void standup.startMeeting("manual")}
                 className="rounded border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-100 transition-colors hover:border-emerald-400/50 hover:text-white"
               >
-                Start now
+                Iniciar agora
               </button>
             </div>
 
@@ -484,12 +484,12 @@ export function PlaybooksPanel({
                   checked={standupScheduleEnabled}
                   onChange={(event) => setStandupScheduleEnabled(event.target.checked)}
                 />
-                Enable scheduled standup.
+                Ativar reuniao agendada.
               </label>
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Cron expression
+                  Expressao cron
                 </span>
                 <input
                   value={standupCronExpr}
@@ -500,7 +500,7 @@ export function PlaybooksPanel({
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Timezone
+                  Fuso horario
                 </span>
                 <input
                   value={standupTimezone}
@@ -511,7 +511,7 @@ export function PlaybooksPanel({
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Seconds per speaker
+                  Segundos por participante
                 </span>
                 <input
                   value={standupSpeakerSeconds}
@@ -526,7 +526,7 @@ export function PlaybooksPanel({
                   checked={standupAutoOpenBoard}
                   onChange={(event) => setStandupAutoOpenBoard(event.target.checked)}
                 />
-                Auto-open the standup board when a meeting starts.
+                Abrir automaticamente o quadro quando a reuniao comecar.
               </label>
 
               <label className="flex items-center gap-2 font-mono text-[11px] text-white/75">
@@ -535,12 +535,12 @@ export function PlaybooksPanel({
                   checked={jiraEnabled}
                   onChange={(event) => setJiraEnabled(event.target.checked)}
                 />
-                Enable Jira source.
+                Ativar fonte Jira.
               </label>
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Jira base URL
+                  URL base do Jira
                 </span>
                 <input
                   value={jiraBaseUrl}
@@ -552,7 +552,7 @@ export function PlaybooksPanel({
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Jira email
+                  Email do Jira
                 </span>
                 <input
                   value={jiraEmail}
@@ -563,7 +563,7 @@ export function PlaybooksPanel({
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Jira API token
+                  Token de API do Jira
                 </span>
                 <input
                   type="password"
@@ -573,20 +573,20 @@ export function PlaybooksPanel({
                     setJiraApiTokenConfigured(event.target.value.trim().length > 0);
                   }}
                   placeholder={
-                    jiraApiTokenConfigured ? "Stored on Studio host. Enter to replace." : ""
+                    jiraApiTokenConfigured ? "Armazenado no host do Studio. Digite para substituir." : ""
                   }
                   className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none"
                 />
                 {jiraApiTokenConfigured ? (
                   <span className="text-[10px] text-white/45">
-                    A Jira API token is already stored on the Studio host.
+                    Ja existe um token de API do Jira salvo no host do Studio.
                   </span>
                 ) : null}
               </label>
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Jira project key
+                  Chave do projeto Jira
                 </span>
                 <input
                   value={jiraProjectKey}
@@ -597,7 +597,7 @@ export function PlaybooksPanel({
 
               <label className="flex flex-col gap-1">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                  Jira JQL override
+                  JQL do Jira
                 </span>
                 <textarea
                   value={jiraJql}
@@ -613,13 +613,13 @@ export function PlaybooksPanel({
                 disabled={standup.saving}
                 className="rounded border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100 transition-colors hover:border-emerald-400/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {standup.saving ? "Saving standup settings" : "Save standup settings"}
+                {standup.saving ? "Salvando configuracoes" : "Salvar configuracoes da reuniao"}
               </button>
             </div>
 
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                Manual board input
+                Entrada manual do quadro
               </div>
               <div className="mt-3 grid gap-3">
                 <label className="flex flex-col gap-1">
@@ -631,7 +631,7 @@ export function PlaybooksPanel({
                     onChange={(event) => setStandupAgentId(event.target.value)}
                     className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none"
                   >
-                    <option value="">Select an agent</option>
+                    <option value="">Selecione um agente</option>
                     {agents.map((agent) => (
                       <option key={agent.agentId} value={agent.agentId}>
                         {agent.name || agent.agentId}
@@ -642,7 +642,7 @@ export function PlaybooksPanel({
 
                 <label className="flex flex-col gap-1">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                    Jira assignee hint
+                    Sugestao de responsavel no Jira
                   </span>
                   <input
                     value={manualJiraAssignee}
@@ -653,7 +653,7 @@ export function PlaybooksPanel({
 
                 <label className="flex flex-col gap-1">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                    Current task
+                    Tarefa atual
                   </span>
                   <input
                     value={manualTask}
@@ -664,7 +664,7 @@ export function PlaybooksPanel({
 
                 <label className="flex flex-col gap-1">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                    Blockers
+                    Bloqueios
                   </span>
                   <textarea
                     value={manualBlockers}
@@ -676,7 +676,7 @@ export function PlaybooksPanel({
 
                 <label className="flex flex-col gap-1">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                    Manual note
+                    Anotacao manual
                   </span>
                   <textarea
                     value={manualNote}
@@ -691,24 +691,24 @@ export function PlaybooksPanel({
                   onClick={() => void handleSaveManualNotes()}
                   className="rounded border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-100 transition-colors hover:border-cyan-400/50 hover:text-white"
                 >
-                  Save manual notes
+                  Salvar anotacoes manuais
                 </button>
               </div>
             </div>
 
             {standup.meeting ? (
               <div className="mt-4 rounded border border-white/8 bg-white/[0.03] px-3 py-3 font-mono text-[11px] text-white/65">
-                <div>Meeting phase: {standup.meeting.phase}</div>
-                <div>Participants: {standup.meeting.participantOrder.length}</div>
+                <div>Fase da reuniao: {standup.meeting.phase}</div>
+                <div>Participantes: {standup.meeting.participantOrder.length}</div>
                 <div>
-                  Current speaker: {standup.meeting.currentSpeakerAgentId ?? "Waiting"}
+                  Participante atual: {standup.meeting.currentSpeakerAgentId ?? "Aguardando"}
                 </div>
               </div>
             ) : null}
           </div>
 
           <div className="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-            Templates
+            Modelos
           </div>
           <div className="mt-3 space-y-2">
             {PLAYBOOK_TEMPLATES.map((template) => {
@@ -752,7 +752,7 @@ export function PlaybooksPanel({
                           onChange={(event) => setSelectedAgentId(event.target.value)}
                           className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none"
                         >
-                          <option value="">Select an agent</option>
+                          <option value="">Selecione um agente</option>
                           {agents.map((agent) => (
                             <option key={agent.agentId} value={agent.agentId}>
                               {agent.name || agent.agentId}
@@ -779,7 +779,7 @@ export function PlaybooksPanel({
                         disabled={createBusy}
                         className="w-full rounded border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-100 transition-colors hover:border-cyan-400/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {createBusy ? "Creating playbook" : "Launch playbook"}
+                        {createBusy ? "Criando rotina" : "Iniciar rotina"}
                       </button>
                     </div>
                   ) : null}

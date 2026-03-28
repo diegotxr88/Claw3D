@@ -65,7 +65,7 @@ export function SettingsPanel({
   const normalizedGatewayUrl = gatewayUrl?.trim() ?? "";
   const gatewayStateLabel = gatewayStatus
     ? gatewayStatus.charAt(0).toUpperCase() + gatewayStatus.slice(1)
-    : "Unknown";
+    : "Desconhecido";
   const gatewayDisconnectDisabled = gatewayStatus !== "connected";
   const [remoteOfficeTokenDraft, setRemoteOfficeTokenDraft] = useState("");
 
@@ -89,7 +89,7 @@ export function SettingsPanel({
           maxLength={48}
           disabled={!officeTitleLoaded}
           onChange={(event) => onOfficeTitleChange(event.target.value)}
-          placeholder="Luke Headquarters"
+          placeholder="Doc HQ"
           className="mt-3 w-full rounded-md border border-cyan-500/10 bg-black/25 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 outline-none transition-colors placeholder:text-cyan-100/30 focus:border-cyan-400/30 disabled:cursor-not-allowed disabled:opacity-50"
         />
         <div className="mt-2 text-[10px] text-white/50">
@@ -101,7 +101,7 @@ export function SettingsPanel({
           <div>
             <div className="text-[11px] font-medium text-white">Gateway</div>
             <div className="mt-1 text-[10px] text-white/75">
-              Current studio connection and endpoint details.
+              Conexao atual do studio e detalhes do endpoint.
             </div>
           </div>
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-200/70">
@@ -109,11 +109,11 @@ export function SettingsPanel({
           </span>
         </div>
         <div className="mt-3 rounded-md border border-cyan-500/10 bg-black/25 px-3 py-2 font-mono text-[10px] text-cyan-100/80">
-          {normalizedGatewayUrl || "No gateway URL configured."}
+          {normalizedGatewayUrl || "Nenhuma URL de gateway configurada."}
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="text-[10px] text-white/60">
-            Disconnecting returns you to the gateway connect screen.
+            Desconectar leva voce de volta para a tela de conexao do gateway.
           </div>
           <button
             type="button"
@@ -121,7 +121,7 @@ export function SettingsPanel({
             disabled={gatewayDisconnectDisabled}
             className="rounded-md border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-rose-100 transition-colors hover:border-rose-400/40 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Disconnect gateway
+            Desconectar gateway
           </button>
         </div>
       </div>
@@ -330,7 +330,7 @@ export function SettingsPanel({
           <button
             type="button"
             role="switch"
-            aria-label="Voice replies"
+            aria-label="Respostas por voz"
             aria-checked={voiceRepliesEnabled}
             className={`ui-switch self-center ${voiceRepliesEnabled ? "ui-switch--on" : ""}`}
             onClick={() => onVoiceRepliesToggle(!voiceRepliesEnabled)}
@@ -339,20 +339,20 @@ export function SettingsPanel({
             <span className="ui-switch-thumb" />
           </button>
           <div className="flex flex-col">
-            <span className="text-[11px] font-medium text-white">Voice replies</span>
+            <span className="text-[11px] font-medium text-white">Respostas por voz</span>
             <span className="text-[10px] text-white/80">
-              Play finalized assistant replies with a natural voice.
+              Reproduz respostas finalizadas do assistente com voz natural.
             </span>
           </div>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-200/70">
-          {voiceRepliesLoaded ? (voiceRepliesEnabled ? "On" : "Off") : "Loading"}
+          {voiceRepliesLoaded ? (voiceRepliesEnabled ? "Ligado" : "Desligado") : "Carregando"}
         </span>
       </div>
       <div className="mt-3 rounded-lg border border-cyan-500/10 bg-black/20 px-4 py-3">
-        <div className="text-[11px] font-medium text-white">Voice</div>
+        <div className="text-[11px] font-medium text-white">Voz</div>
         <div className="mt-1 text-[10px] text-white/75">
-          Choose the voice used for spoken agent replies.
+          Escolha a voz usada nas respostas faladas dos agentes.
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           {CURATED_ELEVENLABS_VOICES.map((voice) => {
@@ -382,9 +382,9 @@ export function SettingsPanel({
       <div className="mt-3 rounded-lg border border-cyan-500/10 bg-black/20 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-[11px] font-medium text-white">Speed</div>
+            <div className="text-[11px] font-medium text-white">Velocidade</div>
             <div className="mt-1 text-[10px] text-white/75">
-              Adjust how fast the selected voice speaks.
+              Ajuste a velocidade da voz selecionada.
             </div>
           </div>
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-200/70">
@@ -404,8 +404,8 @@ export function SettingsPanel({
           className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-cyan-500/15 accent-cyan-400"
         />
         <div className="mt-1 flex items-center justify-between text-[10px] text-white/45">
-          <span>Slower</span>
-          <span>Faster</span>
+          <span>Mais lenta</span>
+          <span>Mais rapida</span>
         </div>
       </div>
     </div>

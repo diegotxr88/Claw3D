@@ -130,6 +130,7 @@ import {
 } from "@/features/retro-office/core/navigation";
 import {
   loadFurniture,
+  loadCameraView,
   markAtmMigrationApplied,
   markGymRoomMigrationApplied,
   markPhoneBoothMigrationApplied,
@@ -200,6 +201,7 @@ import {
 import {
   CAMERA_PRESETS as CAMERA_PRESET_MAP,
   CameraAnimator as CameraPresetAnimator,
+  CameraViewPersistence,
   FollowCamController as FollowCamSystem,
 } from "@/features/retro-office/systems/cameraLighting";
 import {
@@ -2317,7 +2319,7 @@ export function RetroOffice3D({
   monitorByAgentId = EMPTY_MONITOR_MAP,
   githubSkill = null,
   soundclawEnabled = false,
-  officeTitle = "Luke Headquarters",
+  officeTitle = "Doc HQ",
   officeTitleLoaded = false,
   remoteOfficeEnabled = false,
   remoteOfficeSourceKind = "presence_endpoint",
@@ -4961,6 +4963,15 @@ export function RetroOffice3D({
     ? DISTRICT_CAMERA_TARGET
     : LOCAL_CAMERA_TARGET;
   const cameraZoom = remoteOfficeEnabled ? DISTRICT_CAMERA_ZOOM : 56;
+  const initialCameraView = useMemo(
+    () =>
+      loadCameraView(storageNamespace) ?? {
+        pos: CAM_POS,
+        target: cameraTarget,
+        zoom: cameraZoom,
+      },
+    [CAM_POS, cameraTarget, cameraZoom, storageNamespace],
+  );
   const lastOfficeCenterSignalRef = useRef(officeCenterSignal);
 
   useEffect(() => {
@@ -5005,8 +5016,8 @@ export function RetroOffice3D({
             orthographic
             dpr={[0.85, 1.5]}
             camera={{
-              position: CAM_POS,
-              zoom: cameraZoom,
+              position: initialCameraView.pos,
+              zoom: initialCameraView.zoom ?? cameraZoom,
               near: 0.1,
               far: 100,
             }}
@@ -5018,7 +5029,7 @@ export function RetroOffice3D({
             }}
           >
             {/* Ensure camera looks at origin after mount. */}
-            <CameraRig target={cameraTarget} />
+            <CameraRig target={initialCameraView.target} />
             <AdaptiveDprController />
 
             {/* Orbit / pan / zoom controls — disabled while follow cam is active or while editing furniture. */}
@@ -5048,6 +5059,16 @@ export function RetroOffice3D({
             <CameraPresetAnimator
               presetRef={cameraPresetRef}
               orbitRef={orbitRef}
+            />
+            <CameraViewPersistence
+              orbitRef={orbitRef}
+              storageNamespace={storageNamespace}
+              fallbackPreset={{
+                pos: CAM_POS,
+                target: cameraTarget,
+                zoom: cameraZoom,
+              }}
+              enabled={!immersiveOverlayActive && followAgentId === null}
             />
 
             {/* Follow cam: third-person perspective camera trailing the selected agent. */}

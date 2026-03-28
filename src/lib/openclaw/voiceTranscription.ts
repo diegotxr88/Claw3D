@@ -3,10 +3,8 @@ import * as fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
-const require = createRequire(import.meta.url);
 const CONFIGURED_OPENCLAW_PACKAGE_ROOT = process.env.OPENCLAW_PACKAGE_ROOT?.trim() ?? "";
 
 const OPENCLAW_DIST_INDEX_RELATIVE_PATH = path.join("dist", "index.js");
@@ -102,8 +100,22 @@ const nativeImport = new Function(
 ) as (specifier: string) => Promise<unknown>;
 
 const resolveInstalledOpenClawPackageRoot = (): string | null => {
+  const runtimeRequire = (() => {
+    try {
+      const moduleFactory = new Function("return require('node:module')") as () => {
+        createRequire: (url: string) => NodeJS.Require;
+      };
+      return moduleFactory().createRequire(import.meta.url);
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!runtimeRequire) return null;
+
   try {
-    const resolvedEntry = require.resolve("openclaw");
+    const packageName = ["open", "claw"].join("");
+    const resolvedEntry = runtimeRequire.resolve(packageName);
     return path.dirname(path.dirname(resolvedEntry));
   } catch {
     return null;

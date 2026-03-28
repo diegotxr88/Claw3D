@@ -14,7 +14,7 @@ const formatClockTime = (timestampMs: number) =>
 const formatDuration = (startedAt: number, endedAt: number | null) => {
   const deltaMs = Math.max(0, (endedAt ?? Date.now()) - startedAt);
   const seconds = Math.floor(deltaMs / 1000);
-  if (!endedAt) return `${Math.max(1, seconds)}s running`;
+  if (!endedAt) return `${Math.max(1, seconds)}s em execução`;
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -25,7 +25,7 @@ const formatDuration = (startedAt: number, endedAt: number | null) => {
 };
 
 const TRIGGER_LABELS: Record<RunTriggerKind, string> = {
-  user: "USER",
+  user: "USUÁRIO",
   heartbeat: "HEARTBEAT",
   cron: "CRON",
 };
@@ -54,24 +54,24 @@ export function HistoryPanel({
     <section className="flex h-full min-h-0 flex-col">
       <div className="border-b border-cyan-500/10 px-4 py-3">
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
-          Audit Log
+          Registro de Execução
         </div>
         <div className="mt-1 font-mono text-[11px] text-white/40">
-          This session only. Lifecycle events are captured live from HQ.
+          Apenas desta sessão. Eventos capturados ao vivo pela HQ.
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-b border-cyan-500/10 px-4 py-3">
         <label className="flex flex-col gap-1">
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-            Agent
+            Agente
           </span>
           <select
             value={agentFilter}
             onChange={(event) => setAgentFilter(event.target.value)}
             className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none"
           >
-            <option value="all">All agents</option>
+            <option value="all">Todos os agentes</option>
             {agents.map((agent) => (
               <option key={agent.agentId} value={agent.agentId}>
                 {agent.name || agent.agentId}
@@ -82,15 +82,15 @@ export function HistoryPanel({
 
         <label className="flex flex-col gap-1">
           <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-            Trigger
+            Gatilho
           </span>
           <select
             value={triggerFilter}
             onChange={(event) => setTriggerFilter(event.target.value as "all" | RunTriggerKind)}
             className="rounded border border-white/10 bg-black/50 px-2 py-2 font-mono text-[11px] text-white/80 outline-none"
           >
-            <option value="all">All triggers</option>
-            <option value="user">User</option>
+            <option value="all">Todos os gatilhos</option>
+            <option value="user">Usuário</option>
             <option value="heartbeat">Heartbeat</option>
             <option value="cron">Cron</option>
           </select>
@@ -100,7 +100,7 @@ export function HistoryPanel({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {filteredRuns.length === 0 ? (
           <div className="px-2 py-6 font-mono text-[11px] text-white/35">
-            No run records yet for this session.
+            Nenhum registro de execução nesta sessão.
           </div>
         ) : (
           filteredRuns.map((run) => {
@@ -132,19 +132,19 @@ export function HistoryPanel({
 
                 <div className="mt-3 grid grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/38">
                   <div>
-                    <div>Started</div>
+                    <div>Início</div>
                     <div className="mt-1 text-[11px] text-white/75">{formatClockTime(run.startedAt)}</div>
                   </div>
                   <div>
-                    <div>Duration</div>
+                    <div>Duração</div>
                     <div className="mt-1 text-[11px] text-white/75">
                       {formatDuration(run.startedAt, run.endedAt)}
                     </div>
                   </div>
                   <div>
-                    <div>Outcome</div>
+                    <div>Resultado</div>
                     <div className="mt-1 text-[11px] text-white/75">
-                      {isRunning ? "Running" : run.outcome === "error" ? "Error" : "Completed"}
+                      {isRunning ? "Executando" : run.outcome === "error" ? "Erro" : "Concluído"}
                     </div>
                   </div>
                 </div>

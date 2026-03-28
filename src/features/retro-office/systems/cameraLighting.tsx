@@ -5,6 +5,11 @@ import { useEffect, useRef, type MutableRefObject, type RefObject } from "react"
 import * as THREE from "three";
 import { WORLD_H, WORLD_W } from "@/features/retro-office/core/constants";
 import {
+  loadCameraView,
+  saveCameraView,
+  type PersistedCameraView,
+} from "@/features/retro-office/core/persistence";
+import {
   DISTRICT_CAMERA_POSITION,
   DISTRICT_CAMERA_TARGET,
   DISTRICT_CAMERA_ZOOM,
@@ -40,6 +45,16 @@ type OrbitControllerLike = {
   target: THREE.Vector3;
   update: () => void;
 };
+
+const captureCameraView = (
+  camera: THREE.Camera,
+  orbit: OrbitControllerLike,
+): PersistedCameraView => ({
+  pos: [camera.position.x, camera.position.y, camera.position.z],
+  target: [orbit.target.x, orbit.target.y, orbit.target.z],
+  zoom:
+    "zoom" in camera && typeof camera.zoom === "number" ? camera.zoom : undefined,
+});
 
 export function CameraAnimator({
   presetRef,
@@ -86,6 +101,57 @@ export function CameraAnimator({
     if (camera.position.distanceTo(targetPositionRef.current) < 0.05 && zoomSettled) {
       presetRef.current = null;
     }
+  });
+
+  return null;
+}
+
+export function CameraViewPersistence({
+  orbitRef,
+  storageNamespace,
+  fallbackPreset,
+  enabled = true,
+}: {
+  orbitRef: RefObject<OrbitControllerLike | null>;
+  storageNamespace?: string;
+  fallbackPreset: CameraPreset;
+  enabled?: boolean;
+}) {
+  const { camera } = useThree();
+  const hydratedRef = useRef(false);
+  const lastSavedRef = useRef<string | null>(null);
+  const lastPersistAtRef = useRef(0);
+
+  useFrame((state) => {
+    const orbit = orbitRef.current;
+    if (!orbit) return;
+
+    if (!hydratedRef.current) {
+      const savedView = loadCameraView(storageNamespace) ?? fallbackPreset;
+      state.camera.position.set(...savedView.pos);
+      orbit.target.set(...savedView.target);
+      if ("zoom" in state.camera && typeof savedView.zoom === "number") {
+        state.camera.zoom = savedView.zoom;
+        state.camera.updateProjectionMatrix();
+      }
+      orbit.update();
+      lastSavedRef.current = JSON.stringify(captureCameraView(state.camera, orbit));
+      hydratedRef.current = true;
+      return;
+    }
+
+    if (!enabled) return;
+
+    const snapshot = captureCameraView(state.camera, orbit);
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === lastSavedRef.current) return;
+
+    const now = performance.now();
+    if (now - lastPersistAtRef.current < 250) return;
+
+    saveCameraView(snapshot, storageNamespace);
+    lastSavedRef.current = serialized;
+    lastPersistAtRef.current = now;
   });
 
   return null;

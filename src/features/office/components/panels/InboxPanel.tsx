@@ -5,12 +5,12 @@ import { useMemo } from "react";
 import type { AgentState } from "@/features/agents/state/store";
 
 const formatRelativeTime = (timestampMs: number | null) => {
-  if (!timestampMs) return "No output yet";
+  if (!timestampMs) return "Sem saída ainda";
   const deltaMs = Date.now() - timestampMs;
-  if (deltaMs < 60_000) return "Just now";
-  if (deltaMs < 3_600_000) return `${Math.max(1, Math.floor(deltaMs / 60_000))}m ago`;
-  if (deltaMs < 86_400_000) return `${Math.max(1, Math.floor(deltaMs / 3_600_000))}h ago`;
-  return `${Math.max(1, Math.floor(deltaMs / 86_400_000))}d ago`;
+  if (deltaMs < 60_000) return "Agora há pouco";
+  if (deltaMs < 3_600_000) return `há ${Math.max(1, Math.floor(deltaMs / 60_000))} min`;
+  if (deltaMs < 86_400_000) return `há ${Math.max(1, Math.floor(deltaMs / 3_600_000))} h`;
+  return `há ${Math.max(1, Math.floor(deltaMs / 86_400_000))} d`;
 };
 
 export function InboxPanel({
@@ -34,21 +34,21 @@ export function InboxPanel({
     <section className="flex h-full min-h-0 flex-col">
       <div className="border-b border-cyan-500/10 px-4 py-3">
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/70">
-          Results Center
+          Central de Resultados
         </div>
         <div className="mt-1 font-mono text-[11px] text-white/40">
-          Latest assistant output from every desk.
+          Última saída dos agentes em cada mesa.
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {sortedAgents.length === 0 ? (
           <div className="px-2 py-6 font-mono text-[11px] text-white/35">
-            No agents are connected yet.
+            Nenhum agente conectado ainda.
           </div>
         ) : (
           sortedAgents.map((agent) => {
-            const preview = agent.latestPreview?.trim() || "No completed assistant output yet.";
+            const preview = agent.latestPreview?.trim() || "Nenhuma saída concluída ainda.";
             const isRunning = agent.status === "running";
             return (
               <button
@@ -68,7 +68,7 @@ export function InboxPanel({
                   </span>
                   {agent.hasUnseenActivity ? (
                     <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-cyan-300">
-                      New
+                      Novo
                     </span>
                   ) : null}
                 </div>

@@ -164,6 +164,19 @@ export const loadOfficePresenceSnapshot = (workspaceId: string): OfficePresenceS
       preferredDeskId: `desk-${id}`,
     };
   });
+  
+  // Adicionar agente Loop
+  const loopId = "3610a239b961ee47753e55819146f352";
+  const loopExists = agents.some(a => a.agentId === loopId);
+  if (!loopExists) {
+    agents.push({
+      agentId: loopId,
+      name: "Loop",
+      state: resolveStateFromSeed(stableHash(`${loopId}:${bucket}`)),
+      preferredDeskId: `desk-${loopId}`,
+    });
+  }
+  
   return {
     workspaceId,
     timestamp,
