@@ -1067,15 +1067,7 @@ function useAgentTick(
       const effectiveStatus: OfficeAgent["status"] =
         agent.status === "error"
           ? "error"
-          : explicitMeetingHold ||
-              explicitDeskHold ||
-              explicitGymHold ||
-              explicitSmsBoothHold ||
-              explicitPhoneBoothHold ||
-              explicitQaHold ||
-              explicitGithubHold ||
-              agent.status === "working" ||
-              stickyUntil > now
+          : agent.status === "working" || stickyUntil > now
             ? "working"
             : "idle";
 
@@ -2833,8 +2825,6 @@ export function RetroOffice3D({
             isError:
               renderAgent?.status === "error" || agent.status === "error",
             working:
-              renderAgent?.state === "sitting" ||
-              renderAgent?.state === "dancing" ||
               renderAgent?.status === "working" ||
               agent.status === "working",
           };
@@ -4895,10 +4885,7 @@ export function RetroOffice3D({
     const latest = feedEvents[0];
     if (!latest) return;
     if (latest.kind !== "reply") return;
-    const speechBubbleDurationMs = Math.min(
-      12_000,
-      Math.max(5_500, 2_500 + latest.text.trim().length * 42),
-    );
+    const speechBubbleDurationMs = 10_000;
     const addTimer = window.setTimeout(() => {
       setSpeechAgentIds((prev) => new Set([...prev, latest.id]));
     }, 0);
