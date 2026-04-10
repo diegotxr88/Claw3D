@@ -415,6 +415,42 @@ export const meetingHasEveryoneArrived = (meeting: StandupMeeting): boolean => {
   );
 };
 
+const GATHERING_GRACE_MS = 15000;
+const MAX_ALLOWED_MISSING_PARTICIPANTS = 2;
+const MIN_GATHERING_QUORUM_RATIO = 0.7;
+
+export const shouldForceStartStandupGathering = (
+  meeting: StandupMeeting,
+  now: number = Date.now()
+): boolean => {
+  if (meeting.phase !== "gathering") return false;
+  if (meetingHasEveryoneArrived(meeting)) return false;
+  const startedAt = Date.parse(meeting.startedAt);
+  if (!Number.isFinite(startedAt)) return false;
+  const elapsed = now - startedAt;
+  if (elapsed < GATHERING_GRACE_MS) return false;
+  const total = meeting.participantOrder.length;
+  if (total === 0) return false;
+  const arrived = meeting.arrivedAgentIds.length;
+  const minimumQuorum = Math.max(
+    total - MAX_ALLOWED_MISSING_PARTICIPANTS,
+    Math.ceil(total * MIN_GATHERING_QUORUM_RATIO)
+  );
+  return arrived >= minimumQuorum;
+};
+
+export const recoverStandupMeetingIfNeeded = (
+  meeting: StandupMeeting | null,
+  now: number = Date.now()
+): StandupMeeting | null => {
+  if (!meeting) return null;
+  if (!shouldForceStartStandupGathering(meeting, now)) return meeting;
+  const hydratedMeeting = updateStandupArrivals(meeting, meeting.participantOrder);
+  const firstSpeaker = hydratedMeeting.participantOrder[0] ?? null;
+  if (!firstSpeaker) return hydratedMeeting;
+  return startStandupSpeaker(hydratedMeeting, firstSpeaker);
+};
+
 const expandRange = (segment: string): number[] => {
   if (segment.includes("-")) {
     const [startRaw, endRaw] = segment.split("-");

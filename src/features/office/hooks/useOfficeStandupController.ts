@@ -103,11 +103,32 @@ const sameScheduledMinute = (leftIso: string | null, right: Date, timeZone: stri
   );
 };
 
+const GATHERING_GRACE_MS = 15000;
+const MAX_ALLOWED_MISSING_PARTICIPANTS = 2;
+const MIN_GATHERING_QUORUM_RATIO = 0.7;
+
 const everyoneArrived = (meeting: StandupMeeting | null) => {
   if (!meeting) return false;
   return meeting.participantOrder.every((agentId) =>
     meeting.arrivedAgentIds.includes(agentId)
   );
+};
+
+const shouldForceStartGathering = (meeting: StandupMeeting | null) => {
+  if (!meeting || meeting.phase !== "gathering") return false;
+  if (everyoneArrived(meeting)) return false;
+  const startedAt = Date.parse(meeting.startedAt);
+  if (!Number.isFinite(startedAt)) return false;
+  const elapsed = Date.now() - startedAt;
+  if (elapsed < GATHERING_GRACE_MS) return false;
+  const total = meeting.participantOrder.length;
+  if (total === 0) return false;
+  const arrived = meeting.arrivedAgentIds.length;
+  const minimumQuorum = Math.max(
+    total - MAX_ALLOWED_MISSING_PARTICIPANTS,
+    Math.ceil(total * MIN_GATHERING_QUORUM_RATIO)
+  );
+  return arrived >= minimumQuorum;
 };
 
 const isMeetingActive = (meeting: StandupMeeting | null) =>
@@ -142,6 +163,7 @@ export const useOfficeStandupController = (params: {
   const [error, setError] = useState<string | null>(null);
   const lastArrivalsRef = useRef("");
   const meetingRef = useRef<StandupMeeting | null>(null);
+  const autoStartRequestRef = useRef<string | null>(null);
   const configRefreshInFlightRef = useRef<Promise<void> | null>(null);
   const meetingRefreshInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -357,24 +379,54 @@ export const useOfficeStandupController = (params: {
   }, [config, startMeeting]);
 
   useEffect(() => {
-    if (!meeting || meeting.phase !== "gathering") return;
-    if (!everyoneArrived(meeting)) return;
-    const firstSpeaker = meeting.participantOrder[0] ?? null;
-    if (!firstSpeaker) return;
-    void fetchJson<StandupMeetingResponse>("/api/office/standup/meeting", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "start",
-        speakerAgentId: firstSpeaker,
-      }),
-    })
-      .then((payload) => setMeeting(payload.meeting))
-      .catch((err) => {
-        setError(
-          err instanceof Error ? err.message : "Failed to start standup speaking."
+    if (!meeting || meeting.phase !== "gathering") {
+      autoStartRequestRef.current = null;
+      return;
+    }
+    const hasEveryoneArrived = everyoneArrived(meeting);
+    const shouldForceStart = shouldForceStartGathering(meeting);
+    if (!hasEveryoneArrived && !shouldForceStart) return;
+    const requestKey = `${meeting.id}:${meeting.arrivedAgentIds.join("|")}:${shouldForceStart ? "forced" : "full"}`;
+    if (autoStartRequestRef.current === requestKey) return;
+    autoStartRequestRef.current = requestKey;
+    const start = async () => {
+      let currentMeeting = meeting;
+      if (shouldForceStart && !hasEveryoneArrived) {
+        const arrivalsPayload = await fetchJson<StandupMeetingResponse>(
+          "/api/office/standup/meeting",
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "arrivals",
+              arrivedAgentIds: meeting.participantOrder,
+            }),
+          }
         );
-      });
+        currentMeeting = arrivalsPayload.meeting ?? currentMeeting;
+        setMeeting(currentMeeting);
+      }
+      const firstSpeaker = currentMeeting.participantOrder[0] ?? null;
+      if (!firstSpeaker) return;
+      const payload = await fetchJson<StandupMeetingResponse>(
+        "/api/office/standup/meeting",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "start",
+            speakerAgentId: firstSpeaker,
+          }),
+        }
+      );
+      setMeeting(payload.meeting);
+    };
+    void start().catch((err) => {
+      autoStartRequestRef.current = null;
+      setError(
+        err instanceof Error ? err.message : "Failed to start standup speaking."
+      );
+    });
   }, [meeting]);
 
   useEffect(() => {

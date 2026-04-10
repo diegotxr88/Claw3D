@@ -259,9 +259,7 @@ const resolveSchedule = (draft: CronCreateDraft, nowMs: number): CronSchedule =>
 };
 
 const resolvePayload = (sessionTarget: CronSessionTarget, text: string): CronPayload => {
-  if (sessionTarget === "main") {
-    return { kind: "systemEvent", text };
-  }
+  void sessionTarget;
   return { kind: "agentTurn", message: text };
 };
 

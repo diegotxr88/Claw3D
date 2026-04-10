@@ -33,6 +33,7 @@ import {
 import {
   createGatewayAgent,
   renameGatewayAgent,
+  slugifyAgentName,
 } from "@/lib/gateway/agentConfig";
 import {
   runStudioBootstrapLoadOperation,
@@ -56,6 +57,7 @@ import {
   stripUiMetadata,
 } from "@/lib/text/message-extract";
 import { resolveOfficeIntentSnapshot } from "@/lib/office/deskDirectives";
+import type { OfficePresenceSnapshot } from "@/lib/office/presence";
 import { AgentChatPanel } from "@/features/agents/components/AgentChatPanel";
 import {
   RemoteAgentChatPanel,
@@ -68,6 +70,7 @@ import {
 import { AgentCreateWizardModal } from "@/features/agents/components/AgentCreateWizardModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
+import { useMissionControlSSE } from "@/hooks/useMissionControlSSE";
 import {
   applyCreateAgentBootstrapPermissions,
   CREATE_AGENT_DEFAULT_PERMISSIONS,
@@ -211,6 +214,30 @@ const MAIN_AGENT_ID = "main";
 const MAX_OPENCLAW_LOG_ENTRIES = 200;
 const MAX_OPENCLAW_AGENT_OUTPUT_LINES = 12;
 const OFFICE_DANCE_MS = 60_000;
+const CANONICAL_LOCAL_OFFICE_AGENT_IDS = new Set([
+  "doc",
+  "analista",
+  "atualizador",
+  "coder",
+  "codex",
+  "coordenador",
+  "curador",
+  "escritor",
+  "pesquisador",
+  "produtor-video",
+]);
+const CANONICAL_LOCAL_OFFICE_AGENT_NAMES = new Set([
+  "doc",
+  "analista",
+  "atualizador",
+  "coder",
+  "codex",
+  "coordenador",
+  "curador",
+  "escritor",
+  "pesquisador",
+  "produtor-video",
+]);
 
 const getLatestUserRequestForAgent = (
   agent: AgentState,
@@ -315,6 +342,15 @@ const formatOpenClawValue = (value: string | null | undefined) => {
 
 const buildPhoneCallOutputLine = (text: string) => `[phone booth] ${text}`;
 const buildTextMessageOutputLine = (text: string) => `[messaging booth] ${text}`;
+const shouldRetryOfficeBoothRequest = (response: Response) =>
+  response.status >= 500 || response.status === 429;
+const resolveOfficeBoothError = (
+  body: { error?: string } | null,
+  fallback: string,
+) => {
+  const error = body?.error?.trim();
+  return error ? error : fallback;
+};
 
 const buildIdentityFileDraft = (identity: AgentIdentityValues) => {
   const draft = createEmptyPersonalityDraft();
@@ -528,17 +564,105 @@ const mapRemotePresenceAgentToOffice = (agent: {
   agentId: string;
   name: string;
   state: "idle" | "working" | "meeting" | "error";
-}): OfficeAgent => {
+}, missionControlStatus = ""): OfficeAgent => {
   const stableId = `remote:${agent.agentId}`;
-  const isWorking = agent.state === "working" || agent.state === "meeting";
+  const remoteAgentSlug = (() => {
+    try {
+      return slugifyAgentName(agent.name);
+    } catch {
+      return "";
+    }
+  })();
+  const normalizedMissionControlStatus = missionControlStatus.trim().toLowerCase();
+  const missionControlSaysWorking = normalizedMissionControlStatus === "working";
+  const missionControlSaysError = normalizedMissionControlStatus === "error";
+  const missionControlSaysIdle =
+    normalizedMissionControlStatus === "idle" ||
+    normalizedMissionControlStatus === "standby" ||
+    normalizedMissionControlStatus === "offline";
+  const hasMissionControlStatus = normalizedMissionControlStatus.length > 0;
+  const resolvedStatus =
+    missionControlSaysError || agent.state === "error"
+      ? "error"
+      : hasMissionControlStatus
+        ? missionControlSaysWorking
+          ? "working"
+          : missionControlSaysIdle
+            ? "idle"
+            : "idle"
+        : agent.state === "working" || agent.state === "meeting"
+          ? "working"
+          : "idle";
   return {
     id: stableId,
     name: agent.name || "Unknown",
-    status: agent.state === "error" ? "error" : isWorking ? "working" : "idle",
+    status: resolvedStatus,
     color: stringToColor(stableId),
     item: getDeterministicItem(stableId),
     avatarProfile: null,
   };
+};
+
+const mapLocalPresenceAgentToOffice = (agent: {
+  agentId: string;
+  name: string;
+  state: "idle" | "working" | "meeting" | "error";
+}): OfficeAgent => ({
+  id: agent.agentId,
+  name: agent.name || "Unknown",
+  status:
+    agent.state === "error"
+      ? "error"
+      : agent.state === "working" || agent.state === "meeting"
+        ? "working"
+        : "idle",
+  color: stringToColor(agent.agentId),
+  item: getDeterministicItem(agent.agentId),
+  avatarProfile: null,
+});
+
+const buildOfficeAgentCanonicalKey = (agent: Pick<OfficeAgent, "id" | "name">) => {
+  const rawId = agent.id.trim();
+  const rawName = agent.name.trim();
+  const remote = rawId.startsWith("remote:");
+  const normalizedId = remote ? rawId.slice("remote:".length) : rawId;
+  const normalizedName = (() => {
+    if (!rawName) return "";
+    try {
+      return slugifyAgentName(rawName);
+    } catch {
+      return "";
+    }
+  })();
+  const stableBase = normalizedName || normalizedId || rawId || rawName;
+  return `${remote ? "remote" : "local"}:${stableBase}`;
+};
+
+const resolveRemoteMissionControlStatus = (
+  statusesByAgentId: Record<string, string>,
+  agent: { agentId: string; name: string },
+) => {
+  const directKey = `remote:${agent.agentId}`;
+  const directStatus = statusesByAgentId[directKey] ?? "";
+  if (directStatus.trim().length > 0) return directStatus;
+  try {
+    const fallbackKey = `remote:${slugifyAgentName(agent.name)}`;
+    return statusesByAgentId[fallbackKey] ?? "";
+  } catch {
+    return "";
+  }
+};
+
+const isCanonicalLocalOfficeAgent = (agent: { agentId: string; name?: string | null }) => {
+  const normalizedId = agent.agentId.trim().toLowerCase();
+  if (CANONICAL_LOCAL_OFFICE_AGENT_IDS.has(normalizedId)) return true;
+  const rawName = agent.name?.trim() ?? "";
+  if (!rawName) return false;
+  try {
+    return CANONICAL_LOCAL_OFFICE_AGENT_NAMES.has(slugifyAgentName(rawName));
+  } catch {
+    return false;
+  }
 };
 
 type ChatHistoryResult = {
@@ -558,6 +682,7 @@ type SessionsListResult = {
 type SessionsPreviewItem = {
   role?: string;
   text?: string;
+  timestamp?: number | string;
 };
 
 type SessionsPreviewEntry = {
@@ -614,6 +739,12 @@ type ChatRosterEntry = {
   isRunning: boolean;
 };
 
+type MissionControlOfficeAgent = {
+  gateway_agent_id?: string | null;
+  status?: string | null;
+  source?: string | null;
+};
+
 const EMPTY_REMOTE_CHAT_SESSION: RemoteChatSessionState = {
   draft: "",
   sending: false,
@@ -621,6 +752,20 @@ const EMPTY_REMOTE_CHAT_SESSION: RemoteChatSessionState = {
   messages: [],
 };
 const MAX_REMOTE_MESSAGE_CHARS = 2_000;
+const RECENT_RUNNING_INFERENCE_WINDOW_MS = 60_000;
+
+const toOfficeTimestampMs = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+};
 
 const buildRemoteRelayInstruction = (message: string) =>
   [
@@ -651,6 +796,7 @@ const normalizeOfficeFeedText = (
 const resolveHistoryInference = (
   messages: Array<Record<string, unknown>>,
 ): HistoryInferenceResult => {
+  const now = Date.now();
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const entry = messages[index];
     const role = typeof entry.role === "string" ? entry.role : "";
@@ -672,6 +818,21 @@ const resolveHistoryInference = (
     if (role === "user") {
       const rawText = typeof entry.text === "string" ? entry.text : text;
       if (rawText && isHeartbeatPrompt(rawText)) continue;
+      const timestamp =
+        toOfficeTimestampMs(entry.timestamp) ??
+        toOfficeTimestampMs(entry.createdAt) ??
+        toOfficeTimestampMs(entry.at);
+      const isFresh =
+        typeof timestamp === "number" &&
+        now - timestamp <= RECENT_RUNNING_INFERENCE_WINDOW_MS;
+      if (!isFresh) {
+        return {
+          inferredRunning: false,
+          lastRole: "stale-user",
+          lastText: rawText.slice(0, 120),
+          messageCount: messages.length,
+        };
+      }
       return {
         inferredRunning: true,
         lastRole: "user",
@@ -725,6 +886,7 @@ const inferRunningFromAgentSessions = async (params: {
     Number.isFinite(sessions[0].updatedAt)
       ? sessions[0].updatedAt
       : 0;
+  const now = Date.now();
   const inspectedSessions = sessions.map((entry) => {
     const key = entry.key?.trim() ?? "";
     const label = entry.origin?.label?.trim() ?? "";
@@ -735,7 +897,27 @@ const inferRunningFromAgentSessions = async (params: {
     const base = label ? `${key} [${label}]` : key;
     return `${base} @${updatedAt}`;
   });
+  const recentSessions = sessions.filter((entry) => {
+    const updatedAt =
+      typeof entry.updatedAt === "number" && Number.isFinite(entry.updatedAt)
+        ? entry.updatedAt
+        : 0;
+    return updatedAt > 0 && now - updatedAt <= RECENT_RUNNING_INFERENCE_WINDOW_MS;
+  });
+  if (recentSessions.length === 0) {
+    return {
+      inferredRunning: false,
+      sessionKey: "",
+      lastRole: "stale",
+      lastText: "",
+      messageCount: 0,
+      latestSessionUpdatedAtMs,
+      inspectedSessions,
+      inferenceSource: "stale-sessions",
+    };
+  }
   const sessionKeys = sessions
+    .filter((entry) => recentSessions.includes(entry))
     .map((entry) => entry.key?.trim() ?? "")
     .filter((key) => key.length > 0);
 
@@ -759,12 +941,19 @@ const inferRunningFromAgentSessions = async (params: {
         if (!item) continue;
         const role = typeof item.role === "string" ? item.role : "";
         const text = typeof item.text === "string" ? item.text.trim() : "";
+        const timestamp = toOfficeTimestampMs(item.timestamp);
         if (role === "system" || role === "tool" || role === "toolResult") {
           continue;
         }
         if (role === "assistant") break;
         if (role === "user") {
           if (text && isHeartbeatPrompt(text)) continue;
+          const isFreshUserTail =
+            typeof timestamp === "number" &&
+            now - timestamp <= RECENT_RUNNING_INFERENCE_WINDOW_MS;
+          if (!isFreshUserTail) {
+            break;
+          }
           return {
             inferredRunning: true,
             sessionKey: key,
@@ -780,7 +969,7 @@ const inferRunningFromAgentSessions = async (params: {
     }
   }
 
-  for (const session of sessions) {
+  for (const session of recentSessions) {
     const key = session.key?.trim() ?? "";
     if (!key) continue;
     const history = await params.client.call<ChatHistoryResult>(
@@ -893,6 +1082,8 @@ export function OfficeScreen({
   const [lastSeenByAgentId, setLastSeenByAgentId] = useState<
     Record<string, number>
   >({});
+  const [missionControlStatusByAgentId, setMissionControlStatusByAgentId] =
+    useState<Record<string, string>>({});
   const [marketplaceGymHoldByAgentId, setMarketplaceGymHoldByAgentId] =
     useState<Record<string, boolean>>({});
   const [gymCooldownUntilByAgentId, setGymCooldownUntilByAgentId] = useState<
@@ -1016,14 +1207,57 @@ export function OfficeScreen({
       ),
     );
   }, [state.agents]);
-  useEffect(() => {
-    return () => {
-      for (const pendingEntry of pendingJukeboxCommandTimeoutsRef.current.values()) {
-        window.clearTimeout(pendingEntry.timeoutId);
+
+  const loadMissionControlStatuses = useCallback(async () => {
+    try {
+      const response = await fetch("/api/mission-control/agents", {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Mission Control agent sync failed (${response.status})`);
       }
-      pendingJukeboxCommandTimeoutsRef.current.clear();
-    };
+      const payload = (await response.json()) as MissionControlOfficeAgent[];
+      const next = Object.fromEntries(
+        (Array.isArray(payload) ? payload : [])
+          .map((entry) => {
+            const rawAgentId =
+              typeof entry.gateway_agent_id === "string"
+                ? entry.gateway_agent_id.trim()
+                : "";
+            const source =
+              typeof entry.source === "string" ? entry.source.trim() : "";
+            const agentId = rawAgentId
+              ? source === "loop"
+                ? `remote:${rawAgentId}`
+                : rawAgentId
+              : "";
+            const status =
+              typeof entry.status === "string" ? entry.status.trim() : "";
+            return agentId ? ([agentId, status] as const) : null;
+          })
+          .filter((entry): entry is readonly [string, string] => Boolean(entry))
+      );
+      setMissionControlStatusByAgentId(next);
+    } catch {
+      setMissionControlStatusByAgentId({});
+    }
   }, []);
+
+  useEffect(() => {
+    void loadMissionControlStatuses();
+    const intervalId = window.setInterval(() => {
+      void loadMissionControlStatuses();
+    }, 5_000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadMissionControlStatuses]);
+
+  // SSE: escuta eventos de status do Mission Control em tempo real
+  // Dispara reload imediato quando agente muda de status (sem esperar próximo polling)
+  useMissionControlSSE(() => {
+    void loadMissionControlStatuses();
+  });
   const {
     loaded: officeTitleLoaded,
     title: officeTitle,
@@ -1054,6 +1288,38 @@ export function OfficeScreen({
     presenceUrl: remoteOfficePresenceUrl,
     gatewayUrl: remoteOfficeGatewayUrl,
   });
+  const [localOfficeSnapshot, setLocalOfficeSnapshot] =
+    useState<OfficePresenceSnapshot | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let intervalId: number | null = null;
+    const loadLocalOfficeSnapshot = async () => {
+      try {
+        const response = await fetch("/api/office/presence", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Local office presence failed (${response.status})`);
+        }
+        const payload = (await response.json()) as OfficePresenceSnapshot;
+        if (!cancelled) {
+          setLocalOfficeSnapshot(payload);
+        }
+      } catch {
+        if (!cancelled) {
+          setLocalOfficeSnapshot(null);
+        }
+      }
+    };
+    void loadLocalOfficeSnapshot();
+    intervalId = window.setInterval(() => {
+      void loadLocalOfficeSnapshot();
+    }, 5_000);
+    return () => {
+      cancelled = true;
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, []);
   const { snapshot: remoteOfficeLayoutSnapshot } = useRemoteOfficeLayout({
     enabled: remoteOfficeEnabled,
     presenceUrl: remoteOfficePresenceUrl,
@@ -2889,10 +3155,25 @@ export function OfficeScreen({
         .then(async (response) => {
           const body = (await response.json().catch(() => null)) as {
             scenario?: MockPhoneCallScenario;
+            error?: string;
           } | null;
           const promptText = body?.scenario?.promptText?.trim();
           if (!response.ok || !promptText) {
-            promptedPhoneCallKeysRef.current.delete(request.key);
+            if (!response.ok && !shouldRetryOfficeBoothRequest(response)) {
+              dispatch({
+                type: "appendOutput",
+                agentId,
+                line: buildPhoneCallOutputLine(
+                  `Could not prepare call: ${resolveOfficeBoothError(
+                    body,
+                    "invalid phone booth request.",
+                  )}`,
+                ),
+              });
+            }
+            if (shouldRetryOfficeBoothRequest(response)) {
+              promptedPhoneCallKeysRef.current.delete(request.key);
+            }
             return;
           }
           setSelectedChatAgentId(agentId);
@@ -2922,10 +3203,25 @@ export function OfficeScreen({
         .then(async (response) => {
           const body = (await response.json().catch(() => null)) as {
             scenario?: MockPhoneCallScenario;
+            error?: string;
           } | null;
           const scenario = body?.scenario;
           if (!response.ok || !scenario) {
-            preparedPhoneCallKeysRef.current.delete(request.key);
+            if (!response.ok && !shouldRetryOfficeBoothRequest(response)) {
+              dispatch({
+                type: "appendOutput",
+                agentId,
+                line: buildPhoneCallOutputLine(
+                  `Could not place call: ${resolveOfficeBoothError(
+                    body,
+                    "invalid phone booth request.",
+                  )}`,
+                ),
+              });
+            }
+            if (shouldRetryOfficeBoothRequest(response)) {
+              preparedPhoneCallKeysRef.current.delete(request.key);
+            }
             return;
           }
           setPreparedPhoneCallsByAgentId((previous) => ({
@@ -3052,10 +3348,25 @@ export function OfficeScreen({
         .then(async (response) => {
           const body = (await response.json().catch(() => null)) as {
             scenario?: MockTextMessageScenario;
+            error?: string;
           } | null;
           const promptText = body?.scenario?.promptText?.trim();
           if (!response.ok || !promptText) {
-            promptedTextMessageKeysRef.current.delete(request.key);
+            if (!response.ok && !shouldRetryOfficeBoothRequest(response)) {
+              dispatch({
+                type: "appendOutput",
+                agentId,
+                line: buildTextMessageOutputLine(
+                  `Could not prepare message: ${resolveOfficeBoothError(
+                    body,
+                    "invalid messaging booth request.",
+                  )}`,
+                ),
+              });
+            }
+            if (shouldRetryOfficeBoothRequest(response)) {
+              promptedTextMessageKeysRef.current.delete(request.key);
+            }
             return;
           }
           setSelectedChatAgentId(agentId);
@@ -3085,10 +3396,25 @@ export function OfficeScreen({
         .then(async (response) => {
           const body = (await response.json().catch(() => null)) as {
             scenario?: MockTextMessageScenario;
+            error?: string;
           } | null;
           const scenario = body?.scenario;
           if (!response.ok || !scenario) {
-            preparedTextMessageKeysRef.current.delete(request.key);
+            if (!response.ok && !shouldRetryOfficeBoothRequest(response)) {
+              dispatch({
+                type: "appendOutput",
+                agentId,
+                line: buildTextMessageOutputLine(
+                  `Could not send message: ${resolveOfficeBoothError(
+                    body,
+                    "invalid messaging booth request.",
+                  )}`,
+                ),
+              });
+            }
+            if (shouldRetryOfficeBoothRequest(response)) {
+              preparedTextMessageKeysRef.current.delete(request.key);
+            }
             return;
           }
           setPreparedTextMessagesByAgentId((previous) => ({
@@ -3631,6 +3957,10 @@ export function OfficeScreen({
     };
   }, [clearMainVoiceError, mainVoiceError]);
 
+  const canonicalLocalOfficeAgents = useMemo(
+    () => state.agents.filter((agent) => isCanonicalLocalOfficeAgent(agent)),
+    [state.agents],
+  );
   const officeAgents = useMemo(() => {
     void clockTick;
     const now = Date.now();
@@ -3647,7 +3977,9 @@ export function OfficeScreen({
         smsBoothHeld: boolean;
       }
     >();
-    const nextOfficeAgents = state.agents.map((agent) => {
+    const nextOfficeAgents = canonicalLocalOfficeAgents.map((agent) => {
+      const missionControlStatus = missionControlStatusByAgentId[agent.agentId] ?? "";
+      const missionControlSaysWorking = missionControlStatus === "working";
       const latchedWorking = (workingUntilByAgentId[agent.agentId] ?? 0) > now;
       const deskHeld = Boolean(deskHoldByAgentId[agent.agentId]);
       const gymHeld = Boolean(gymHoldByAgentId[agent.agentId]);
@@ -3669,30 +4001,19 @@ export function OfficeScreen({
         return cached.officeAgent;
       }
       const effectiveAgent: AgentState =
-        latchedWorking && agent.status !== "error"
+        missionControlSaysWorking && agent.status !== "error"
           ? {
               ...agent,
               status: "running",
-              runId: agent.runId ?? `latched-${agent.agentId}`,
+              runId: agent.runId ?? `mc-${agent.agentId}`,
             }
-          : (deskHeld || gymHeld || qaHeld || phoneBoothHeld || smsBoothHeld) &&
-              agent.status !== "error"
-            ? {
+          : agent.status === "error"
+            ? agent
+            : {
                 ...agent,
-                status: "running",
-                runId:
-                  agent.runId ??
-                  (qaHeld
-                    ? `qa-hold-${agent.agentId}`
-                    : smsBoothHeld
-                      ? `text-hold-${agent.agentId}`
-                    : phoneBoothHeld
-                      ? `call-hold-${agent.agentId}`
-                    : gymHeld
-                      ? `gym-hold-${agent.agentId}`
-                      : `desk-hold-${agent.agentId}`),
-              }
-            : agent;
+                status: "idle",
+                runId: null,
+              };
       const officeAgent = mapAgentToOffice(effectiveAgent);
       nextCache.set(agent.agentId, {
         agent,
@@ -3712,10 +4033,11 @@ export function OfficeScreen({
     clockTick,
     deskHoldByAgentId,
     gymHoldByAgentId,
+    missionControlStatusByAgentId,
     phoneBoothHoldByAgentId,
     qaHoldByAgentId,
     smsBoothHoldByAgentId,
-    state.agents,
+    canonicalLocalOfficeAgents,
     workingUntilByAgentId,
   ]);
   const openClawLiveStateText = useMemo(() => {
@@ -3760,17 +4082,26 @@ export function OfficeScreen({
   const remoteOfficeAgents = useMemo(
     () =>
       (remoteOfficeSnapshot?.agents ?? []).map((agent) =>
-        mapRemotePresenceAgentToOffice(agent)
+        mapRemotePresenceAgentToOffice(
+          agent,
+          resolveRemoteMissionControlStatus(missionControlStatusByAgentId, agent),
+        )
       ),
-    [remoteOfficeSnapshot]
+    [missionControlStatusByAgentId, remoteOfficeSnapshot]
   );
+  const localPresenceOnlyAgents = useMemo(() => {
+    const knownAgentKeys = new Set(officeAgents.map((agent) => buildOfficeAgentCanonicalKey(agent)));
+    return (localOfficeSnapshot?.agents ?? [])
+      .map((agent) => mapLocalPresenceAgentToOffice(agent))
+      .filter((agent) => !knownAgentKeys.has(buildOfficeAgentCanonicalKey(agent)));
+  }, [localOfficeSnapshot, officeAgents]);
   const chatRosterEntries = useMemo<ChatRosterEntry[]>(
     () => [
-      ...state.agents.map((agent) => ({
+      ...canonicalLocalOfficeAgents.map((agent) => ({
         id: agent.agentId,
         name: agent.name || agent.agentId,
         kind: "local" as const,
-        isRunning: agent.status === "running",
+        isRunning: missionControlStatusByAgentId[agent.agentId] === "working",
       })),
       ...remoteOfficeAgents.map((agent) => ({
         id: agent.id,
@@ -3779,7 +4110,7 @@ export function OfficeScreen({
         isRunning: agent.status === "working",
       })),
     ],
-    [remoteOfficeAgents, state.agents],
+    [canonicalLocalOfficeAgents, missionControlStatusByAgentId, remoteOfficeAgents],
   );
   const focusedRemoteChatTarget = selectedChatAgentId
     ? (remoteOfficeAgents.find((agent) => agent.id === selectedChatAgentId) ?? null)
@@ -3787,10 +4118,16 @@ export function OfficeScreen({
   const focusedRemoteChatState = focusedRemoteChatTarget
     ? (remoteChatByAgentId[focusedRemoteChatTarget.id] ?? EMPTY_REMOTE_CHAT_SESSION)
     : null;
-  const allVisibleAgents = useMemo(
-    () => [...officeAgents, ...remoteOfficeAgents],
-    [officeAgents, remoteOfficeAgents],
-  );
+  const allVisibleAgents = useMemo(() => {
+    const deduped = new Map<string, OfficeAgent>();
+    for (const agent of [...officeAgents, ...localPresenceOnlyAgents, ...remoteOfficeAgents]) {
+      const canonicalKey = buildOfficeAgentCanonicalKey(agent);
+      if (!deduped.has(canonicalKey)) {
+        deduped.set(canonicalKey, agent);
+      }
+    }
+    return Array.from(deduped.values());
+  }, [localPresenceOnlyAgents, officeAgents, remoteOfficeAgents]);
   const remoteOfficeVisible =
     remoteOfficeEnabled &&
     (remoteOfficeSourceKind === "presence_endpoint"
@@ -4080,14 +4417,14 @@ export function OfficeScreen({
 
   const runningCount = state.agents.filter(
     (agent) =>
-      agent.status === "running" ||
+      missionControlStatusByAgentId[agent.agentId] === "working" ||
       deskHoldByAgentId[agent.agentId] ||
       gymHoldByAgentId[agent.agentId] ||
       jukeboxHoldByAgentId[agent.agentId] ||
       phoneBoothHoldByAgentId[agent.agentId] ||
       smsBoothHoldByAgentId[agent.agentId] ||
       qaHoldByAgentId[agent.agentId],
-  ).length;
+  ).length + localPresenceOnlyAgents.filter((agent) => agent.status === "working").length;
   const unseenInboxCount = state.agents.filter(
     (agent) => agent.hasUnseenActivity,
   ).length;
@@ -4733,7 +5070,7 @@ export function OfficeScreen({
                 />
               ) : (
                 <div className="flex flex-1 items-center justify-center font-mono text-[12px] text-white/30">
-                  Select an agent to chat.
+                  Selecione um agente para conversar.
                 </div>
               )}
             </div>
@@ -4748,7 +5085,7 @@ export function OfficeScreen({
           {chatOpen ? (
             <>
               <ChevronDown className="h-3.5 w-3.5" />
-              <span>HIDE CHAT</span>
+              <span>OCULTAR CHAT</span>
             </>
           ) : (
             <>

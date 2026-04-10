@@ -167,7 +167,9 @@ function loadDeviceAuthToken(params: { deviceId: string; role: string; scope: st
   const key = buildScopedTokenKey(scope, role);
   const entry = store.tokens[key];
   if (!entry || typeof entry.token !== "string") return null;
-  return entry;
+  const token = entry.token.trim();
+  if (!token) return null;
+  return { ...entry, token };
 }
 
 function storeDeviceAuthToken(params: {
@@ -460,6 +462,11 @@ export class GatewayBrowserClient {
 
   private async sendConnect() {
     if (this.connectSent) return;
+    const nonce = this.connectNonce?.trim() ?? "";
+    if (!nonce) {
+      this.ws?.close(1008, "connect challenge missing nonce");
+      return;
+    }
     this.connectSent = true;
     if (this.connectTimer !== null) {
       window.clearTimeout(this.connectTimer);
@@ -506,7 +513,6 @@ export class GatewayBrowserClient {
 
     if (isSecureContext && deviceIdentity) {
       const signedAtMs = Date.now();
-      const nonce = this.connectNonce ?? undefined;
       const payload = buildDeviceAuthPayload({
         deviceId: deviceIdentity.deviceId,
         clientId: this.opts.clientName ?? GATEWAY_CLIENT_NAMES.CONTROL_UI,
@@ -589,9 +595,11 @@ export class GatewayBrowserClient {
       if (evt.event === "connect.challenge") {
         const payload = evt.payload as { nonce?: unknown } | undefined;
         const nonce = payload && typeof payload.nonce === "string" ? payload.nonce : null;
-        if (nonce) {
-          this.connectNonce = nonce;
+        if (nonce && nonce.trim().length > 0) {
+          this.connectNonce = nonce.trim();
           void this.sendConnect();
+        } else {
+          this.ws?.close(1008, "connect challenge missing nonce");
         }
         return;
       }
@@ -651,7 +659,7 @@ export class GatewayBrowserClient {
     this.connectSent = false;
     if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
     this.connectTimer = window.setTimeout(() => {
-      void this.sendConnect();
-    }, 750);
+      this.ws?.close(1008, "connect challenge timeout");
+    }, 1500);
   }
 }

@@ -255,7 +255,7 @@ const AgentsPageScreen = () => {
 
   const { state, dispatch, hydrateAgents, setError, setLoading } = useAgentStore();
   const [showConnectionPanel, setShowConnectionPanel] = useState(false);
-  const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
+  const [focusFilter, setFocusFilter] = useState<FocusFilter>("running");
   const [focusedPreferencesLoaded, setFocusedPreferencesLoaded] = useState(false);
   const [agentsLoadedOnce, setAgentsLoadedOnce] = useState(false);
   const [didAttemptGatewayConnect, setDidAttemptGatewayConnect] = useState(false);

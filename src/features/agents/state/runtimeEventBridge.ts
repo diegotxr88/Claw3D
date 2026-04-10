@@ -307,7 +307,8 @@ export const buildHistoryLines = (messages: ChatHistoryMessage[]): HistoryLinesR
   return { lines, lastAssistant, lastAssistantAt, lastRole, lastUser, lastUserAt };
 };
 
-const HISTORY_RUNNING_RECOVERY_WINDOW_MS = 2 * 60 * 60 * 1000;
+const HISTORY_RUNNING_RECOVERY_WINDOW_MS = 60_000;
+const SUMMARY_ACTIVITY_FRESHNESS_WINDOW_MS = 60_000;
 
 export const resolveHistoryRunStatePatch = (params: {
   status: AgentState["status"];
@@ -491,6 +492,7 @@ export const buildSummarySnapshotPatches = ({
   statusSummary: SummaryStatusSnapshot;
   previewResult: SummaryPreviewSnapshot;
 }): SummarySnapshotPatch[] => {
+  const nowMs = Date.now();
   const previewMap = new Map<string, SummaryPreviewEntry>();
   for (const entry of previewResult.previews ?? []) {
     previewMap.set(entry.key, entry);
@@ -511,17 +513,28 @@ export const buildSummarySnapshotPatches = ({
   for (const agent of agents) {
     const patch: Partial<AgentState> = {};
     const activity = activityByKey.get(agent.sessionKey);
-    if (typeof activity === "number") {
+    const isFreshActivity =
+      typeof activity === "number" &&
+      Number.isFinite(activity) &&
+      activity > 0 &&
+      nowMs - activity <= SUMMARY_ACTIVITY_FRESHNESS_WINDOW_MS;
+    if (isFreshActivity) {
       patch.lastActivityAt = activity;
     }
     const preview = previewMap.get(agent.sessionKey);
     if (preview?.items?.length) {
       const latestItem = preview.items[preview.items.length - 1];
+      const latestItemTs = toTimestampMs(latestItem?.timestamp);
       if (latestItem?.role === "assistant" && agent.status !== "running") {
-        const previewTs = toTimestampMs(latestItem.timestamp);
-        if (typeof previewTs === "number") {
+        const isFreshPreviewTs =
+          typeof latestItemTs === "number" &&
+          Number.isFinite(latestItemTs) &&
+          latestItemTs > 0 &&
+          nowMs - latestItemTs <= SUMMARY_ACTIVITY_FRESHNESS_WINDOW_MS;
+        if (isFreshPreviewTs) {
+          const previewTs = latestItemTs;
           patch.lastAssistantMessageAt = previewTs;
-        } else if (typeof activity === "number") {
+        } else if (isFreshActivity) {
           patch.lastAssistantMessageAt = activity;
         }
       }
@@ -529,10 +542,22 @@ export const buildSummarySnapshotPatches = ({
         .reverse()
         .find((item) => item.role === "assistant");
       const lastUser = [...preview.items].reverse().find((item) => item.role === "user");
-      if (lastAssistant?.text) {
+      const lastAssistantTs = toTimestampMs(lastAssistant?.timestamp);
+      const lastUserTs = toTimestampMs(lastUser?.timestamp);
+      const isFreshAssistantPreview =
+        typeof lastAssistantTs === "number" &&
+        Number.isFinite(lastAssistantTs) &&
+        lastAssistantTs > 0 &&
+        nowMs - lastAssistantTs <= SUMMARY_ACTIVITY_FRESHNESS_WINDOW_MS;
+      const isFreshUserPreview =
+        typeof lastUserTs === "number" &&
+        Number.isFinite(lastUserTs) &&
+        lastUserTs > 0 &&
+        nowMs - lastUserTs <= SUMMARY_ACTIVITY_FRESHNESS_WINDOW_MS;
+      if (lastAssistant?.text && isFreshAssistantPreview) {
         patch.latestPreview = stripUiMetadata(lastAssistant.text);
       }
-      if (lastUser?.text) {
+      if (lastUser?.text && isFreshUserPreview) {
         patch.lastUserMessage = stripUiMetadata(lastUser.text);
       }
     }

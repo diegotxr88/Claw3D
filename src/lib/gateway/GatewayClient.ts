@@ -16,6 +16,7 @@ import type {
   StudioSettingsLoadOptions,
   StudioSettingsResponse,
 } from "@/lib/studio/coordinator";
+import { isLocalGatewayUrl } from "@/lib/gateway/local-gateway";
 import { resolveStudioProxyGatewayUrl } from "@/lib/gateway/proxy-url";
 import { ensureGatewayReloadModeHotForLocalStudio } from "@/lib/gateway/gatewayReloadMode";
 import { GatewayResponseError } from "@/lib/gateway/errors";
@@ -99,7 +100,24 @@ const parseConnectFailedCloseReason = (
 };
 
 const DEFAULT_UPSTREAM_GATEWAY_URL =
-  process.env.NEXT_PUBLIC_GATEWAY_URL || "ws://localhost:18789";
+  process.env.NEXT_PUBLIC_GATEWAY_URL || "ws://127.0.0.1:18789";
+
+const resolveGatewayTransport = (gatewayUrl: string, token: string) => {
+  const normalizedGatewayUrl = gatewayUrl.trim();
+  const normalizedToken = token.trim();
+  if (normalizedGatewayUrl && normalizedToken && isLocalGatewayUrl(normalizedGatewayUrl)) {
+    return {
+      gatewayUrl: normalizedGatewayUrl,
+      token: normalizedToken,
+      authScopeKey: normalizedGatewayUrl,
+    };
+  }
+  return {
+    gatewayUrl: resolveStudioProxyGatewayUrl(),
+    token: normalizedToken,
+    authScopeKey: normalizedGatewayUrl,
+  };
+};
 
 const normalizeLocalGatewayDefaults = (value: unknown): StudioGatewaySettings | null => {
   if (!value || typeof value !== "object") return null;
@@ -492,6 +510,20 @@ const isNonRetryableConnectErrorCode = (code: string | null): boolean => {
   return NON_RETRYABLE_CONNECT_ERROR_CODES.has(normalized);
 };
 
+const shouldRetryAfterClearingBrowserAuth = (
+  error: unknown,
+  token: string,
+): boolean => {
+  if (!token.trim()) return false;
+  if (error instanceof GatewayResponseError) {
+    return isAuthError(`${error.code} ${error.message}`);
+  }
+  if (error instanceof Error) {
+    return isAuthError(error.message);
+  }
+  return false;
+};
+
 export const resolveGatewayAutoRetryDelayMs = (params: {
   status: GatewayStatus;
   didAutoConnect: boolean;
@@ -527,6 +559,7 @@ export const useGatewayConnection = (
   const retryAttemptRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasManualDisconnectRef = useRef(false);
+  const clearedBrowserAuthRef = useRef(false);
 
   const [gatewayUrl, setGatewayUrl] = useState(DEFAULT_UPSTREAM_GATEWAY_URL);
   const [token, setToken] = useState("");
@@ -563,10 +596,12 @@ export const useGatewayConnection = (
           ? gateway!.url
           : normalizedDefaults?.url || DEFAULT_UPSTREAM_GATEWAY_URL;
         const nextGatewayUrl = resolvedUrl;
+        const savedToken =
+          gateway && "token" in gateway && typeof gateway.token === "string"
+            ? gateway.token
+            : "";
         const nextToken = hasSavedUrl
-          ? (gateway && "token" in gateway && typeof gateway.token === "string"
-              ? gateway.token
-              : "")
+          ? savedToken || normalizedDefaults?.token || ""
           : normalizedDefaults?.token ?? "";
         loadedGatewaySettings.current = {
           gatewayUrl: nextGatewayUrl.trim(),
@@ -625,18 +660,45 @@ export const useGatewayConnection = (
     wasManualDisconnectRef.current = false;
     try {
       await settingsCoordinator.flushPending();
-      await client.connect({
-        gatewayUrl: resolveStudioProxyGatewayUrl(),
-        token,
-        authScopeKey: gatewayUrl,
+      const transport = resolveGatewayTransport(gatewayUrl, token);
+      const connectParams = {
+        gatewayUrl: transport.gatewayUrl,
+        token: transport.token,
+        authScopeKey: transport.authScopeKey,
         clientName: "openclaw-control-ui",
-      });
+      } as const;
+      await client.connect(connectParams);
       await ensureGatewayReloadModeHotForLocalStudio({
         client,
         upstreamGatewayUrl: gatewayUrl,
       });
+      clearedBrowserAuthRef.current = false;
       retryAttemptRef.current = 0;
     } catch (err) {
+      if (
+        !clearedBrowserAuthRef.current &&
+        shouldRetryAfterClearingBrowserAuth(err, token)
+      ) {
+        clearedBrowserAuthRef.current = true;
+        clearGatewayBrowserSessionStorage();
+        const retryTransport = resolveGatewayTransport(gatewayUrl, token);
+        try {
+          await client.connect({
+            gatewayUrl: retryTransport.gatewayUrl,
+            token: retryTransport.token,
+            authScopeKey: retryTransport.authScopeKey,
+            clientName: "openclaw-control-ui",
+          });
+          await ensureGatewayReloadModeHotForLocalStudio({
+            client,
+            upstreamGatewayUrl: gatewayUrl,
+          });
+          retryAttemptRef.current = 0;
+          return;
+        } catch (retryErr) {
+          err = retryErr;
+        }
+      }
       setConnectErrorCode(err instanceof GatewayResponseError ? err.code : null);
       setError(formatGatewayError(err));
     }

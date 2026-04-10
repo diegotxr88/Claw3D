@@ -12,6 +12,7 @@ import {
 } from "@/features/retro-office/core/constants";
 import { nextUid } from "@/features/retro-office/core/geometry";
 import {
+  hasConferenceLayoutMigrationApplied,
   hasAtmMigrationApplied,
   hasGymRoomMigrationApplied,
   hasPhoneBoothMigrationApplied,
@@ -413,12 +414,12 @@ const DEFAULT_ART_ROOM_ITEMS: FurnitureSeed[] = [
 
 const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "round_table", x: 50, y: 50, r: 90 },
-  { type: "chair", x: 130, y: 50, facing: 0 },
-  { type: "chair", x: 200, y: 90, facing: 325 },
-  { type: "chair", x: 180, y: 170, facing: 240 },
-  { type: "chair", x: 120, y: 480, facing: 180 },
-  { type: "chair", x: 50, y: 150, facing: 105 },
-  { type: "chair", x: 60, y: 80, facing: 60 },
+  { type: "chair", x: 128, y: 28, facing: 0 },
+  { type: "chair", x: 202, y: 72, facing: 320 },
+  { type: "chair", x: 206, y: 156, facing: 250 },
+  { type: "chair", x: 126, y: 202, facing: 180 },
+  { type: "chair", x: 42, y: 156, facing: 110 },
+  { type: "chair", x: 38, y: 72, facing: 40 },
   { type: "executive_desk", x: 420, y: 60, w: 130, h: 65 },
   { type: "chair", x: 540, y: 60, facing: 0 },
   { type: "bookshelf", x: 500, y: 30, w: 80, h: 120 },
@@ -620,6 +621,40 @@ export const ensureOfficeSmsBooth = (
   if (items.some((item) => item.type === "sms_booth")) return items;
   if (hasSmsBoothMigrationApplied()) return items;
   return [...items, { ...DEFAULT_SMS_BOOTH, _uid: nextUid() }];
+};
+
+export const ensureOfficeConferenceLayout = (
+  items: FurnitureItem[],
+): FurnitureItem[] => {
+  const conferenceChairBounds = {
+    minX: 0,
+    maxX: 340,
+    minY: 0,
+    maxY: 260,
+  };
+  const hasConferenceChairCluster = items.some(
+    (item) =>
+      item.type === "chair" &&
+      item.x >= conferenceChairBounds.minX &&
+      item.x <= conferenceChairBounds.maxX &&
+      item.y >= conferenceChairBounds.minY &&
+      item.y <= conferenceChairBounds.maxY,
+  );
+  const filteredItems = items.filter(
+    (item) =>
+      !(
+        item.type === "chair" &&
+        item.x === 100 &&
+        item.y === 200 &&
+        item.facing === 180 &&
+        hasConferenceChairCluster
+      ),
+  );
+  if (filteredItems.length !== items.length) {
+    return filteredItems;
+  }
+  if (hasConferenceLayoutMigrationApplied()) return items;
+  return items;
 };
 
 export const ensureOfficeServerRoom = (

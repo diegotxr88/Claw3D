@@ -24,6 +24,35 @@ const formatAgentNameplateText = (value: string): string => {
   return firstName || normalized;
 };
 
+const getAgentRoleChip = (agentId: string, name: string) => {
+  const normalized = `${agentId} ${name}`.toLowerCase();
+  if (normalized.includes("doc")) {
+    return { label: "Lead", color: "#ffe29a", bg: "#3b2a12" };
+  }
+  if (normalized.includes("loop")) {
+    return { label: "Loop", color: "#b8f2ff", bg: "#143041" };
+  }
+  if (normalized.includes("coordenador")) {
+    return { label: "Ops", color: "#fde68a", bg: "#3a2b12" };
+  }
+  if (normalized.includes("analista")) {
+    return { label: "QA", color: "#c4b5fd", bg: "#22163c" };
+  }
+  if (normalized.includes("pesquisador")) {
+    return { label: "R&D", color: "#bfdbfe", bg: "#15263f" };
+  }
+  if (normalized.includes("escritor")) {
+    return { label: "Write", color: "#fbcfe8", bg: "#3a1628" };
+  }
+  if (normalized.includes("coder") || normalized.includes("codex")) {
+    return { label: "Build", color: "#fcd34d", bg: "#33220d" };
+  }
+  if (normalized.includes("janitor")) {
+    return { label: "Care", color: "#bbf7d0", bg: "#163122" };
+  }
+  return { label: "Agent", color: "#dbeafe", bg: "#17263b" };
+};
+
 export const AgentModel = memo(function AgentModel({
   agentId,
   name,
@@ -302,11 +331,7 @@ export const AgentModel = memo(function AgentModel({
               : 0;
     }
 
-    const working =
-      agent.state === "sitting" ||
-      isWorkout ||
-      isDancing ||
-      agent.status === "working";
+    const working = agent.status === "working";
     const isError = agent.status === "error";
     const isAway = agent.state === "away";
 
@@ -642,6 +667,7 @@ export const AgentModel = memo(function AgentModel({
   const nameplateText = name ? formatAgentNameplateText(name) : "";
   const nameplateFontSize =
     nameplateText.length > 9 ? 0.118 : nameplateText.length > 7 ? 0.13 : 0.144;
+  const roleChip = getAgentRoleChip(agentId, name);
 
   return (
     <group
@@ -1081,6 +1107,10 @@ export const AgentModel = memo(function AgentModel({
             <circleGeometry args={[0.052, 14]} />
             <meshBasicMaterial ref={statusDotMatRef} color="#ef4444" />
           </mesh>
+          <mesh position={[0.19, 0, 0.001]}>
+            <planeGeometry args={[0.18, 0.14]} />
+            <meshBasicMaterial color={roleChip.bg} transparent opacity={0.9} />
+          </mesh>
           <Text
             position={[-0.02, 0, 0.001]}
             fontSize={nameplateFontSize}
@@ -1091,6 +1121,17 @@ export const AgentModel = memo(function AgentModel({
             font={undefined}
           >
             {nameplateText}
+          </Text>
+          <Text
+            position={[0.19, 0, 0.002]}
+            fontSize={0.066}
+            color={roleChip.color}
+            anchorX="center"
+            anchorY="middle"
+            maxWidth={0.16}
+            font={undefined}
+          >
+            {roleChip.label}
           </Text>
         </Billboard>
       ) : null}

@@ -1,175 +1,81 @@
-import { createHash, randomUUID } from "node:crypto";
-import { getPublicKeyAsync, signAsync, utils } from "@noble/ed25519";
-import { GatewayResponseError } from "@/lib/gateway/errors";
+import fs from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 
-type GatewayResponseFrame = {
-  type: "res";
-  id: string;
-  ok: boolean;
-  payload?: unknown;
-  error?: {
-    code?: string;
-    message?: string;
-    details?: unknown;
-    retryable?: boolean;
-    retryAfterMs?: number;
-  };
+type GatewayClientLike = {
+  start: () => void;
+  stop?: () => void;
+  close?: () => void;
+  request: <T = unknown>(method: string, params?: unknown) => Promise<T>;
 };
 
-type GatewayEventFrame = {
-  type: "event";
-  event?: string;
-  payload?: unknown;
-};
+type GatewayClientConstructor = new (opts: Record<string, unknown>) => GatewayClientLike;
 
-type PendingRequest = {
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-};
+type DeviceIdentity = unknown;
 
-const CONNECT_TIMEOUT_MS = 8_000;
-const REQUEST_TIMEOUT_MS = 12_000;
-const INITIAL_CONNECT_DELAY_MS = 750;
-const GATEWAY_ROLE = "operator";
-const GATEWAY_SCOPES = ["operator.admin", "operator.approvals", "operator.pairing"];
-const GATEWAY_CLIENT_ID = "openclaw-control-ui";
+let openClawGatewayClientCtorPromise: Promise<GatewayClientConstructor> | null = null;
+let openClawReadScopePromise: Promise<string> | null = null;
+let openClawDeviceIdentityPromise: Promise<DeviceIdentity | null> | null = null;
 
-const asRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value && typeof value === "object" && !Array.isArray(value));
-
-const parseGatewayFrame = (raw: string): GatewayResponseFrame | GatewayEventFrame | null => {
-  try {
-    return JSON.parse(raw) as GatewayResponseFrame | GatewayEventFrame;
-  } catch {
-    return null;
+const resolveOpenClawDistFile = (prefix: string): string => {
+  const distDir = "/opt/homebrew/lib/node_modules/openclaw/dist";
+  const entry =
+    fs.readdirSync(distDir).find((name) => name.startsWith(prefix) && name.endsWith(".js")) ?? null;
+  if (!entry) {
+    throw new Error(`OpenClaw dist module not found for prefix: ${prefix}`);
   }
+  return path.join(distDir, entry);
 };
 
-type DeviceIdentity = {
-  deviceId: string;
-  publicKey: string;
-  privateKey: Uint8Array;
+const importOpenClawDistModule = async (prefix: string): Promise<Record<string, unknown>> => {
+  const filePath = resolveOpenClawDistFile(prefix);
+  return (await import(/* webpackIgnore: true */ filePath)) as Record<string, unknown>;
 };
 
-const base64UrlEncode = (bytes: Uint8Array): string => {
-  return Buffer.from(bytes)
-    .toString("base64")
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/g, "");
-};
-
-const fingerprintPublicKey = (publicKey: Uint8Array): string =>
-  createHash("sha256").update(publicKey).digest("hex");
-
-const buildDeviceAuthPayload = (params: {
-  deviceId: string;
-  clientId: string;
-  clientMode: string;
-  role: string;
-  scopes: string[];
-  signedAtMs: number;
-  token?: string | null;
-  nonce?: string | null;
-  version?: "v1" | "v2";
-}): string => {
-  const version = params.version ?? (params.nonce ? "v2" : "v1");
-  const scopes = params.scopes.join(",");
-  const token = params.token ?? "";
-  const base = [
-    version,
-    params.deviceId,
-    params.clientId,
-    params.clientMode,
-    params.role,
-    scopes,
-    String(params.signedAtMs),
-    token,
-  ];
-  if (version === "v2") {
-    base.push(params.nonce ?? "");
-  }
-  return base.join("|");
-};
-
-const createDeviceIdentity = async (): Promise<DeviceIdentity> => {
-  const privateKey = utils.randomSecretKey();
-  const publicKey = await getPublicKeyAsync(privateKey);
-  return {
-    deviceId: fingerprintPublicKey(publicKey),
-    publicKey: base64UrlEncode(publicKey),
-    privateKey,
-  };
-};
-
-const buildConnectParams = async (params: {
-  token: string;
-  nonce: string | null;
-  deviceIdentity: DeviceIdentity;
-}) => {
-  const signedAtMs = Date.now();
-  const payload = buildDeviceAuthPayload({
-    deviceId: params.deviceIdentity.deviceId,
-    clientId: GATEWAY_CLIENT_ID,
-    clientMode: "webchat",
-    role: GATEWAY_ROLE,
-    scopes: GATEWAY_SCOPES,
-    signedAtMs,
-    token: params.token || null,
-    nonce: params.nonce,
-  });
-  const signature = await signAsync(new TextEncoder().encode(payload), params.deviceIdentity.privateKey);
-  return {
-  minProtocol: 3,
-  maxProtocol: 3,
-  client: {
-    id: GATEWAY_CLIENT_ID,
-    version: "dev",
-    platform: process.platform,
-    mode: "webchat",
-  },
-  role: GATEWAY_ROLE,
-  scopes: GATEWAY_SCOPES,
-  caps: [],
-  device: {
-    id: params.deviceIdentity.deviceId,
-    publicKey: params.deviceIdentity.publicKey,
-    signature: base64UrlEncode(signature),
-    signedAt: signedAtMs,
-    ...(params.nonce ? { nonce: params.nonce } : {}),
-  },
-  ...(params.token
-    ? {
-        auth: {
-          token: params.token,
-        },
+const loadOfficialGatewayClientCtor = async (): Promise<GatewayClientConstructor> => {
+  if (!openClawGatewayClientCtorPromise) {
+    openClawGatewayClientCtorPromise = (async () => {
+      const mod = await importOpenClawDistModule("method-scopes-");
+      const ctor = mod.u;
+      if (typeof ctor !== "function") {
+        throw new Error("Failed to load OpenClaw GatewayClient constructor.");
       }
-    : {}),
-  userAgent: "node",
-  locale: "en-US",
-  };
+      return ctor as GatewayClientConstructor;
+    })();
+  }
+  return openClawGatewayClientCtorPromise;
 };
 
-const withTimeout = async <T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message: string,
-): Promise<T> => {
-  let timeoutId: NodeJS.Timeout | null = null;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error(message));
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
+const loadOfficialReadScope = async (): Promise<string> => {
+  if (!openClawReadScopePromise) {
+    openClawReadScopePromise = (async () => {
+      const mod = await importOpenClawDistModule("method-scopes-");
+      const readScope = mod.a;
+      if (typeof readScope !== "string" || !readScope.trim()) {
+        throw new Error("Failed to load OpenClaw READ_SCOPE.");
+      }
+      return readScope;
+    })();
   }
+  return openClawReadScopePromise;
+};
+
+const loadOfficialDeviceIdentity = async (): Promise<DeviceIdentity | null> => {
+  if (!openClawDeviceIdentityPromise) {
+    openClawDeviceIdentityPromise = (async () => {
+      try {
+        const mod = await importOpenClawDistModule("device-identity-");
+        const loadOrCreateDeviceIdentity = mod.loadOrCreateDeviceIdentity;
+        if (typeof loadOrCreateDeviceIdentity !== "function") {
+          return null;
+        }
+        return (await loadOrCreateDeviceIdentity()) as DeviceIdentity;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return openClawDeviceIdentityPromise;
 };
 
 export const buildAgentMainSessionKey = (agentId: string, mainKey: string) => {
@@ -179,260 +85,87 @@ export const buildAgentMainSessionKey = (agentId: string, mainKey: string) => {
 };
 
 export class NodeGatewayClient {
-  private socket: WebSocket | null = null;
-  private pending = new Map<string, PendingRequest>();
-  private closed = false;
-  private connectRequestIds = new Set<string>();
-  private connectPromise: Promise<void> | null = null;
-  private resolveConnect: (() => void) | null = null;
-  private rejectConnect: ((error: Error) => void) | null = null;
-  private connectNonce: string | null = null;
-  private connectToken = "";
-  private deviceIdentity: DeviceIdentity | null = null;
-  private connectSent = false;
-  private connectTimer: NodeJS.Timeout | null = null;
+  private client: GatewayClientLike | null = null;
 
-  async connect(params: { gatewayUrl: string; token?: string | null }) {
+  async connect(params: { gatewayUrl: string; token?: string | null; origin?: string | null }) {
     const gatewayUrl = params.gatewayUrl.trim();
     if (!gatewayUrl) {
       throw new Error("Remote office gateway URL is not configured.");
     }
-    if (this.socket) {
+    if (this.client) {
       throw new Error("Node gateway client is already connected.");
     }
-    this.connectToken = params.token?.trim() ?? "";
-    this.deviceIdentity = await createDeviceIdentity();
 
-    const socket = new WebSocket(gatewayUrl);
-    this.socket = socket;
+    const [GatewayClient, readScope, deviceIdentity] = await Promise.all([
+      loadOfficialGatewayClientCtor(),
+      loadOfficialReadScope(),
+      loadOfficialDeviceIdentity(),
+    ]);
 
-    socket.addEventListener("message", (event) => {
-      const raw =
-        typeof event.data === "string"
-          ? event.data
-          : event.data instanceof ArrayBuffer
-            ? new TextDecoder().decode(new Uint8Array(event.data))
-            : String(event.data);
-      const frame = parseGatewayFrame(raw);
-      if (!frame) return;
-      if (frame.type === "event") {
-        if (frame.event === "connect.challenge") {
-          const payload = asRecord(frame.payload) ? frame.payload : null;
-          const nonce = typeof payload?.nonce === "string" ? payload.nonce.trim() : "";
-          if (!nonce) {
-            this.rejectConnectFlow(
-              new Error("Remote gateway requested device authentication without a nonce."),
-            );
-            this.close();
-            return;
-          }
-          this.connectNonce = nonce;
-          if (this.connectTimer) {
-            clearTimeout(this.connectTimer);
-            this.connectTimer = null;
-          }
-          void this.sendConnectRequest();
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try {
+          gatewayClient.stop?.();
+        } catch {}
+        reject(new Error("Remote gateway connect handshake timed out."));
+      }, 12_000);
+
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
         }
-        return;
-      }
-      if (this.connectRequestIds.has(frame.id)) {
-        this.connectRequestIds.delete(frame.id);
-        if (frame.ok) {
-          this.resolveConnect?.();
-          this.clearConnectFlow();
-          return;
-        }
-        if (asRecord(frame.error) && typeof frame.error.code === "string") {
-          this.rejectConnectFlow(
-            new GatewayResponseError({
-              code: frame.error.code,
-              message:
-                typeof frame.error.message === "string"
-                  ? frame.error.message
-                  : "Gateway connect failed.",
-              details: frame.error.details,
-              retryable:
-                typeof frame.error.retryable === "boolean" ? frame.error.retryable : undefined,
-              retryAfterMs:
-                typeof frame.error.retryAfterMs === "number"
-                  ? frame.error.retryAfterMs
-                  : undefined,
-            }),
+        fn();
+      };
+
+      const gatewayClient = new GatewayClient({
+        url: gatewayUrl,
+        token: params.token?.trim() || undefined,
+        scopes: [readScope],
+        clientName: "cli",
+        clientVersion: "dev",
+        mode: "probe",
+        instanceId: randomUUID(),
+        deviceIdentity: deviceIdentity ?? undefined,
+        onConnectError: (error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : `Remote gateway connection failed: ${String(error)}`;
+          settle(() => reject(new Error(message)));
+        },
+        onClose: (code: number, reason: string) => {
+          settle(() =>
+            reject(new Error(`Remote gateway connection closed (${code})${reason ? `: ${reason}` : "."}`)),
           );
-          return;
-        }
-        this.rejectConnectFlow(new Error("Gateway connect failed."));
-        return;
-      }
-      const pending = this.pending.get(frame.id);
-      if (!pending) return;
-      this.pending.delete(frame.id);
-      if (frame.ok) {
-        pending.resolve(frame.payload);
-        return;
-      }
-      if (asRecord(frame.error) && typeof frame.error.code === "string") {
-        pending.reject(
-          new GatewayResponseError({
-            code: frame.error.code,
-            message:
-              typeof frame.error.message === "string"
-                ? frame.error.message
-                : "Gateway request failed.",
-            details: frame.error.details,
-            retryable:
-              typeof frame.error.retryable === "boolean" ? frame.error.retryable : undefined,
-            retryAfterMs:
-              typeof frame.error.retryAfterMs === "number"
-                ? frame.error.retryAfterMs
-                : undefined,
-          }),
-        );
-        return;
-      }
-      pending.reject(new Error("Gateway request failed."));
-    });
+        },
+        onHelloOk: () => {
+          this.client = gatewayClient;
+          settle(() => resolve());
+        },
+      });
 
-    socket.addEventListener("close", (event) => {
-      this.closed = true;
-      const reason = typeof event.reason === "string" ? event.reason : "";
-      this.rejectAllPending(
-        new Error(
-          `Remote gateway connection closed${reason.trim() ? `: ${reason}` : "."}`,
-        ),
-      );
-      if (this.socket === socket) {
-        this.socket = null;
-      }
-      this.clearConnectFlow();
+      gatewayClient.start();
     });
-
-    socket.addEventListener("error", () => {
-      const error = new Error("Remote gateway connection failed.");
-      this.rejectConnectFlow(error);
-      this.rejectAllPending(error);
-    });
-
-    await withTimeout(
-      new Promise<void>((resolve, reject) => {
-        const handleOpen = () => {
-          socket.removeEventListener("open", handleOpen);
-          socket.removeEventListener("error", handleError);
-          resolve();
-        };
-        const handleError = () => {
-          socket.removeEventListener("open", handleOpen);
-          socket.removeEventListener("error", handleError);
-          reject(new Error("Remote gateway connection failed."));
-        };
-        socket.addEventListener("open", handleOpen, { once: true });
-        socket.addEventListener("error", handleError, { once: true });
-      }),
-      CONNECT_TIMEOUT_MS,
-      "Timed out connecting to the remote gateway.",
-    );
-
-    this.connectPromise = new Promise<void>((resolve, reject) => {
-      this.resolveConnect = resolve;
-      this.rejectConnect = reject;
-    });
-    this.queueConnect();
-    await withTimeout(
-      this.connectPromise,
-      REQUEST_TIMEOUT_MS,
-      "Remote gateway connect handshake timed out.",
-    );
   }
 
-  async request<T = unknown>(method: string, params: unknown): Promise<T> {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN || this.closed) {
+  async request<T = unknown>(method: string, params?: unknown): Promise<T> {
+    if (!this.client) {
       throw new Error("Remote gateway is not connected.");
     }
-    const id = randomUUID();
-    const response = withTimeout(
-      new Promise<unknown>((resolve, reject) => {
-        this.pending.set(id, { resolve, reject });
-        try {
-          this.socket?.send(JSON.stringify({ type: "req", id, method, params }));
-        } catch (error) {
-          this.pending.delete(id);
-          reject(error instanceof Error ? error : new Error("Failed to send gateway request."));
-        }
-      }),
-      REQUEST_TIMEOUT_MS,
-      `Remote gateway request timed out for ${method}.`,
-    ) as Promise<T>;
-    return response;
+    return await this.client.request<T>(method, params);
   }
 
   close() {
-    this.closed = true;
-    this.rejectAllPending(new Error("Remote gateway client closed."));
-    if (this.socket) {
-      try {
-        this.socket.close();
-      } finally {
-        this.socket = null;
-      }
-    }
-  }
-
-  private rejectAllPending(error: Error) {
-    const entries = [...this.pending.values()];
-    this.pending.clear();
-    for (const pending of entries) {
-      pending.reject(error);
-    }
-  }
-
-  private queueConnect() {
-    this.connectSent = false;
-    if (this.connectTimer) {
-      clearTimeout(this.connectTimer);
-    }
-    this.connectTimer = setTimeout(() => {
-      void this.sendConnectRequest();
-    }, INITIAL_CONNECT_DELAY_MS);
-  }
-
-  private async sendConnectRequest() {
-    if (
-      this.connectSent ||
-      !this.socket ||
-      this.socket.readyState !== WebSocket.OPEN ||
-      !this.deviceIdentity
-    ) {
-      throw new Error("Remote gateway is not connected.");
-    }
-    this.connectSent = true;
-    if (this.connectTimer) {
-      clearTimeout(this.connectTimer);
-      this.connectTimer = null;
-    }
-    const id = randomUUID();
-    this.connectRequestIds.add(id);
-    const params = await buildConnectParams({
-      token: this.connectToken,
-      nonce: this.connectNonce,
-      deviceIdentity: this.deviceIdentity,
-    });
-    this.socket.send(JSON.stringify({ type: "req", id, method: "connect", params }));
-  }
-
-  private rejectConnectFlow(error: Error) {
-    this.rejectConnect?.(error);
-    this.clearConnectFlow();
-  }
-
-  private clearConnectFlow() {
-    this.connectRequestIds.clear();
-    this.connectPromise = null;
-    this.resolveConnect = null;
-    this.rejectConnect = null;
-    this.connectSent = false;
-    if (this.connectTimer) {
-      clearTimeout(this.connectTimer);
-      this.connectTimer = null;
+    if (!this.client) return;
+    try {
+      this.client.stop?.();
+      this.client.close?.();
+    } finally {
+      this.client = null;
     }
   }
 }

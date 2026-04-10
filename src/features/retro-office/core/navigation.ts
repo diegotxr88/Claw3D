@@ -46,13 +46,14 @@ export const resolvePingPongTargets = (
 };
 
 export const ROAM_POINTS = [
-  { x: 800, y: 200 },
-  { x: 850, y: 500 },
-  { x: 820, y: 580 },
+  { x: 880, y: 220 },
+  { x: 930, y: 520 },
+  { x: 860, y: 660 },
   { x: 450, y: 420 },
   { x: 250, y: 420 },
   { x: 650, y: 420 },
-  { x: 150, y: 620 },
+  { x: 220, y: 680 },
+  { x: 1080, y: 360 },
 ];
 
 export const JANITOR_ENTRY_POINTS: FacingPoint[] = [
@@ -312,9 +313,9 @@ export const getMeetingSeatLocations = (items: FurnitureItem[]) => {
       (item) =>
         item.type === "chair" &&
         item.x >= 0 &&
-        item.x <= 290 &&
+        item.x <= 340 &&
         item.y >= 0 &&
-        item.y <= 235,
+        item.y <= 260,
     )
     .sort((left, right) => left.y - right.y || left.x - right.x);
   if (chairs.length === 0) return [];
@@ -329,17 +330,21 @@ export const getMeetingSeatLocations = (items: FurnitureItem[]) => {
   const centerY =
     chairCenters.reduce((sum, chair) => sum + chair.y, 0) / chairCenters.length;
 
-  return chairCenters.map((chair) => {
-    const offsetX = chair.x - centerX;
-    const offsetY = chair.y - centerY;
-    const distance = Math.hypot(offsetX, offsetY) || 1;
-    const seatPullback = 14;
-    return {
-      x: chair.x + (offsetX / distance) * seatPullback,
-      y: chair.y + (offsetY / distance) * seatPullback,
-      facing: Math.atan2(centerX - chair.x, centerY - chair.y),
-    };
-  });
+  return chairCenters
+    .map((chair) => {
+      const offsetX = chair.x - centerX;
+      const offsetY = chair.y - centerY;
+      const distance = Math.hypot(offsetX, offsetY) || 1;
+      const seatPullback = 18;
+      return {
+        x: chair.x + (offsetX / distance) * seatPullback,
+        y: chair.y + (offsetY / distance) * seatPullback,
+        facing: Math.atan2(centerX - chair.x, centerY - chair.y),
+        angle: Math.atan2(offsetY, offsetX),
+      };
+    })
+    .sort((left, right) => left.angle - right.angle)
+    .map(({ angle: _angle, ...seat }) => seat);
 };
 
 export const getGymWorkoutLocations = (
@@ -484,10 +489,14 @@ export const getQaLabStations = (
     });
 
 export const MEETING_OVERFLOW_LOCATIONS = [
-  { x: 18, y: 118, facing: Math.PI / 2 },
-  { x: 270, y: 118, facing: -Math.PI / 2 },
-  { x: 145, y: 24, facing: Math.PI },
-  { x: 145, y: 220, facing: 0 },
+  { x: 16, y: 118, facing: Math.PI / 2 },
+  { x: 274, y: 118, facing: -Math.PI / 2 },
+  { x: 145, y: 14, facing: Math.PI },
+  { x: 145, y: 232, facing: 0 },
+  { x: 44, y: 46, facing: (3 * Math.PI) / 4 },
+  { x: 246, y: 46, facing: (-3 * Math.PI) / 4 },
+  { x: 44, y: 190, facing: Math.PI / 4 },
+  { x: 246, y: 190, facing: -Math.PI / 4 },
 ];
 
 export const resolveDeskIndexForItem = (

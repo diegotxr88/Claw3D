@@ -48,6 +48,15 @@ const BROWSER_KEYWORD_RE =
   /\b(browser|navigate|snapshot|screenshot|tab|click|console|cookies|storage|page|url)\b/i;
 const BROWSER_INTENT_RE =
   /\b(browse|inspect|visit|navigate|open|go to|website|site|page)\b/i;
+const BROWSER_ACTIVITY_RE =
+  /\b(browser action|browser tool|opened|opening|navigated|navigating|visited|visiting|snapshot|screenshot|tab|clicked)\b/i;
+const AUTO_BROWSER_PREVIEW_BLOCKLIST = [
+  /(^|\.)claude\.ai$/i,
+  /(^|\.)chatgpt\.com$/i,
+  /(^|\.)openai\.com$/i,
+  /(^|\.)gemini\.google\.com$/i,
+  /(^|\.)copilot\.microsoft\.com$/i,
+];
 const MONITOR_HISTORY_LINE_LIMIT = 160;
 const MONITOR_BROWSER_SCAN_ENTRY_LIMIT = 18;
 
@@ -62,6 +71,15 @@ const normalizeBrowserUrl = (value: string): string | null => {
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   if (!trimmed.includes(".") || /\s/.test(trimmed)) return null;
   return `https://${trimmed}`;
+};
+
+const isBlockedAutoBrowserPreviewUrl = (value: string): boolean => {
+  try {
+    const hostname = new URL(value).hostname.trim().toLowerCase();
+    return AUTO_BROWSER_PREVIEW_BLOCKLIST.some((pattern) => pattern.test(hostname));
+  } catch {
+    return false;
+  }
 };
 
 const extractDomains = (value: string): string[] => {
@@ -293,17 +311,24 @@ export const buildOfficeDeskMonitor = (
   const browserScanEntries = flatEntries.slice(-MONITOR_BROWSER_SCAN_ENTRY_LIMIT);
   const browserUrl =
     [
-      agent.lastUserMessage ?? "",
       agent.latestPreview ?? "",
       ...latestEntries.map((entry) => entry.text),
       ...browserScanEntries.map((entry) => entry.text),
     ]
-      .flatMap((text) => [
-        ...extractUrls(text),
-        ...extractDomains(text)
-          .filter(() => BROWSER_KEYWORD_RE.test(text) || BROWSER_INTENT_RE.test(text)),
-      ])
+      .flatMap((text) => {
+        const hasBrowserSignal =
+          BROWSER_KEYWORD_RE.test(text) ||
+          BROWSER_INTENT_RE.test(text) ||
+          BROWSER_ACTIVITY_RE.test(text);
+        if (!hasBrowserSignal) return [];
+        return [
+          ...extractUrls(text),
+          ...extractDomains(text),
+        ];
+      })
       .map((value) => normalizeBrowserUrl(value))
+      .filter((value): value is string => Boolean(value))
+      .filter((value) => !isBlockedAutoBrowserPreviewUrl(value))
       .find((value): value is string => Boolean(value)) ??
     null;
   const modeSummary = summarizeMode({

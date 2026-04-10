@@ -36,7 +36,7 @@ const readOpenclawGatewayDefaults = (): { url: string; token: string } | null =>
     const token = typeof auth?.token === "string" ? auth.token.trim() : "";
     const port = typeof gateway.port === "number" && Number.isFinite(gateway.port) ? gateway.port : null;
     if (!token) return null;
-    const url = port ? `ws://localhost:${port}` : "";
+    const url = port ? `ws://127.0.0.1:${port}` : "";
     if (!url) return null;
     return { url, token };
   } catch {
@@ -65,6 +65,13 @@ export const loadStudioSettings = (): StudioSettings => {
   const raw = fs.readFileSync(settingsPath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
   const settings = normalizeStudioSettings(parsed);
+  try {
+    if (JSON.stringify(parsed) !== JSON.stringify(settings)) {
+      saveStudioSettings(settings);
+    }
+  } catch {
+    // Keep serving the normalized in-memory settings even if self-healing fails.
+  }
   if (!settings.gateway?.token) {
     const gateway = loadLocalGatewayDefaults();
     if (gateway) {

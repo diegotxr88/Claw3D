@@ -71,6 +71,7 @@ import {
 } from "@/features/retro-office/core/constants";
 import {
   ensureOfficeAtm,
+  ensureOfficeConferenceLayout,
   ensureOfficeGymRoom,
   ensureOfficePhoneBooth,
   ensureOfficePingPongTable,
@@ -132,6 +133,7 @@ import {
   loadFurniture,
   loadCameraView,
   markAtmMigrationApplied,
+  markConferenceLayoutMigrationApplied,
   markGymRoomMigrationApplied,
   markPhoneBoothMigrationApplied,
   markQaLabMigrationApplied,
@@ -211,6 +213,12 @@ import {
   SpotlightEffect as SceneSpotlightEffect,
 } from "@/features/retro-office/systems/sceneRuntime";
 import {
+  AgentCollaborationLinks as AgentCollaborationLinkOverlay,
+  AdaptiveDistrictLabels as AdaptiveDistrictLabelOverlay,
+  OfficeActivityPulse as OfficeActivityPulseOverlay,
+  AgentStatusAuras as AgentStatusAuraOverlay,
+  AgentHierarchyPins as AgentHierarchyPinOverlay,
+  DeskOccupancyBeacons as DeskOccupancyBeaconOverlay,
   DeskNameplates as DeskNameplateOverlay,
   HeatmapSystem as AgentHeatmapSystem,
   TrailSystem as AgentTrailSystem,
@@ -915,10 +923,31 @@ function useAgentTick(
     (agentId: string) => {
       const participantOrder = standupMeeting?.participantOrder ?? [];
       const targetIndex = participantOrder.indexOf(agentId);
-      const seats = [...meetingSeatLocations, ...MEETING_OVERFLOW_LOCATIONS];
-      const fallbackSeat = seats[0] ?? { x: 145, y: 118, facing: Math.PI };
+      const authoredSeats = [...meetingSeatLocations];
+      const fallbackSeat =
+        authoredSeats[0] ??
+        MEETING_OVERFLOW_LOCATIONS[0] ??
+        { x: 145, y: 118, facing: Math.PI };
       if (targetIndex < 0) return fallbackSeat;
-      return seats[targetIndex] ?? fallbackSeat;
+      if (targetIndex < authoredSeats.length) {
+        return authoredSeats[targetIndex] ?? fallbackSeat;
+      }
+
+      const overflowIndex = targetIndex - authoredSeats.length;
+      if (overflowIndex < MEETING_OVERFLOW_LOCATIONS.length) {
+        return MEETING_OVERFLOW_LOCATIONS[overflowIndex] ?? fallbackSeat;
+      }
+
+      const centerSeats = authoredSeats.length > 0 ? authoredSeats : [fallbackSeat];
+      const centerX =
+        centerSeats.reduce((sum, seat) => sum + seat.x, 0) / centerSeats.length;
+      const centerY =
+        centerSeats.reduce((sum, seat) => sum + seat.y, 0) / centerSeats.length;
+      return buildDynamicMeetingOverflowSeat(
+        centerX,
+        centerY,
+        overflowIndex - MEETING_OVERFLOW_LOCATIONS.length,
+      );
     },
     [meetingSeatLocations, standupMeeting?.participantOrder],
   );
@@ -1061,8 +1090,9 @@ function useAgentTick(
           (item) => item.type === "phone_booth",
         ) ?? null;
 
-      if (agent.status === "working" && !explicitDeskHold && deskPos)
+      if (agent.status === "working" && deskPos) {
         stickyUntilRef.current.set(agent.id, now + DESK_STICKY_MS);
+      }
       const stickyUntil = stickyUntilRef.current.get(agent.id) ?? 0;
       const effectiveStatus: OfficeAgent["status"] =
         agent.status === "error"
@@ -1070,6 +1100,31 @@ function useAgentTick(
           : agent.status === "working" || stickyUntil > now
             ? "working"
             : "idle";
+      const implicitWorkingTarget =
+        effectiveStatus === "working" &&
+        !explicitMeetingHold &&
+        !explicitGymHold &&
+        !explicitSmsBoothHold &&
+        !explicitPhoneBoothHold &&
+        !explicitQaHold &&
+        !explicitGithubHold &&
+        !explicitDeskHold
+          ? resolveDefaultWorkingArea({
+              agentId: agent.id,
+              name: agent.name,
+              hasAssignedDesk: Boolean(deskPos),
+              hasQaStations: qaLabStations.length > 0,
+              isRemoteOfficeAgent: isRemoteOfficeAgentId(agent.id),
+            })
+          : null;
+      const deskWorkingHold =
+        explicitDeskHold || implicitWorkingTarget === "desk";
+      const remoteDistrictWorkingHold =
+        implicitWorkingTarget === "remote_district";
+      const qaWorkingHold =
+        explicitQaHold || implicitWorkingTarget === "qa_lab";
+      const githubWorkingHold =
+        explicitGithubHold || implicitWorkingTarget === "server_room";
 
       let ns: Partial<RenderAgent> = {};
       if (existing) {
@@ -1161,7 +1216,37 @@ function useAgentTick(
                 : "standing"
               : "walking";
           ns.facing = gymRoute.facing;
-        } else if (explicitQaHold) {
+        } else if (remoteDistrictWorkingHold) {
+          const remoteTarget = pickRoamPoint(agent.id);
+          const targetChanged =
+            existing.targetX !== remoteTarget.x ||
+            existing.targetY !== remoteTarget.y ||
+            existing.interactionTarget !== undefined;
+          ns.interactionTarget = undefined;
+          ns.phoneBoothStage = undefined;
+          ns.serverRoomStage = undefined;
+          ns.gymStage = undefined;
+          ns.qaLabStage = undefined;
+          ns.qaLabStationType = undefined;
+          ns.workoutStyle = undefined;
+          ns.targetX = remoteTarget.x;
+          ns.targetY = remoteTarget.y;
+          if (targetChanged) {
+            ns.path = planPath(
+              existing.x,
+              existing.y,
+              remoteTarget.x,
+              remoteTarget.y,
+            );
+          }
+          ns.state =
+            Math.hypot(
+              existing.x - remoteTarget.x,
+              existing.y - remoteTarget.y,
+            ) < 15
+              ? "standing"
+              : "walking";
+        } else if (qaWorkingHold) {
           const qaLabRoute = resolveQaLabRoute(
             existing.x,
             existing.y,
@@ -1206,7 +1291,7 @@ function useAgentTick(
               ? "standing"
               : "walking";
           ns.facing = qaLabRoute.facing;
-        } else if (explicitGithubHold) {
+        } else if (githubWorkingHold) {
           const serverRoomRoute = resolveServerRoomRoute(
             existing.x,
             existing.y,
@@ -1455,14 +1540,14 @@ function useAgentTick(
                           x: phoneBoothRoute.targetX,
                           y: phoneBoothRoute.targetY,
                         }
-                      : explicitQaHold
+                      : qaWorkingHold
                         ? { x: qaLabRoute.targetX, y: qaLabRoute.targetY }
-                        : explicitGithubHold
+                        : githubWorkingHold
                           ? {
                               x: serverRoomRoute.targetX,
                               y: serverRoomRoute.targetY,
                             }
-                          : deskPos;
+                          : deskWorkingHold ? deskPos : null;
             if (!nextTarget) {
               ns.interactionTarget = undefined;
               ns.serverRoomStage = undefined;
@@ -1489,9 +1574,9 @@ function useAgentTick(
                   ? "sms_booth"
                   : explicitPhoneBoothHold
                     ? "phone_booth"
-                    : explicitQaHold
+                    : qaWorkingHold
                       ? "qa_lab"
-                      : explicitGithubHold
+                      : githubWorkingHold
                         ? "server_room"
                         : "desk";
             ns.phoneBoothStage =
@@ -1513,7 +1598,7 @@ function useAgentTick(
                   ? undefined
                   : explicitPhoneBoothHold
                     ? undefined
-                    : explicitGithubHold
+                    : githubWorkingHold
                       ? serverRoomRoute.stage
                       : undefined;
             ns.gymStage = explicitMeetingHold
@@ -1527,10 +1612,10 @@ function useAgentTick(
                 ? undefined
                 : explicitPhoneBoothHold
                   ? undefined
-                  : explicitQaHold
+                  : qaWorkingHold
                     ? qaLabRoute.stage
                     : undefined;
-            ns.qaLabStationType = explicitQaHold
+            ns.qaLabStationType = qaWorkingHold
               ? qaStationPos.stationType
               : undefined;
             ns.workoutStyle = explicitGymHold
@@ -1599,22 +1684,29 @@ function useAgentTick(
                       x: smsBoothRoute.targetX,
                       y: smsBoothRoute.targetY,
                     }
-                  : explicitPhoneBoothHold
+                : explicitPhoneBoothHold
                     ? {
                         x: phoneBoothRoute.targetX,
                         y: phoneBoothRoute.targetY,
                       }
-                    : explicitQaHold
+                    : remoteDistrictWorkingHold
+                      ? pickRoamPoint(agent.id)
+                    : qaWorkingHold
                       ? {
                           x: qaLabRoute.targetX,
                           y: qaLabRoute.targetY,
                         }
-                      : explicitGithubHold
+                      : githubWorkingHold
                         ? {
                             x: serverRoomRoute.targetX,
                             y: serverRoomRoute.targetY,
                           }
-                        : (deskPos ?? { x: sx, y: sy })
+                        : deskWorkingHold
+                          ? (deskPos ?? { x: sx, y: sy })
+                          : {
+                              x: serverRoomRoute.targetX,
+                              y: serverRoomRoute.targetY,
+                            }
             : { x: sx, y: sy };
         ns = {
           x: sx,
@@ -1631,9 +1723,10 @@ function useAgentTick(
               explicitGymHold ||
               explicitSmsBoothHold ||
               explicitPhoneBoothHold ||
-              explicitQaHold ||
-              explicitGithubHold ||
-              deskPos)
+              remoteDistrictWorkingHold ||
+              qaWorkingHold ||
+              githubWorkingHold ||
+              deskWorkingHold)
               ? "walking"
               : "standing",
           interactionTarget: explicitMeetingHold
@@ -1644,11 +1737,13 @@ function useAgentTick(
                 ? "sms_booth"
                 : explicitPhoneBoothHold
                   ? "phone_booth"
-                  : explicitQaHold
+                  : remoteDistrictWorkingHold
+                    ? undefined
+                  : qaWorkingHold
                     ? "qa_lab"
-                    : explicitGithubHold
+                    : githubWorkingHold
                       ? "server_room"
-                      : deskPos
+                      : deskWorkingHold
                         ? "desk"
                         : undefined,
           smsBoothStage:
@@ -1667,7 +1762,7 @@ function useAgentTick(
             explicitGymHold ||
             explicitSmsBoothHold ||
             explicitPhoneBoothHold ||
-            !explicitGithubHold
+            !githubWorkingHold
               ? undefined
               : serverRoomRoute.stage,
           gymStage:
@@ -1678,10 +1773,10 @@ function useAgentTick(
             explicitMeetingHold ||
             explicitSmsBoothHold ||
             explicitPhoneBoothHold ||
-            !explicitQaHold
+            !qaWorkingHold
               ? undefined
               : qaLabRoute.stage,
-          qaLabStationType: explicitQaHold
+          qaLabStationType: qaWorkingHold
             ? qaStationPos.stationType
             : undefined,
           workoutStyle: explicitGymHold
@@ -2046,7 +2141,7 @@ function useAgentTick(
             const lastSeen = lastSeenByAgentId[agent.id] ?? 0;
             const isAway = lastSeen > 0 && now - lastSeen > AWAY_THRESHOLD_MS;
             if (isAway && agent.state !== "away") {
-              if (awayFurniture.length > 0) {
+              if (!isRemoteOfficeAgentId(agent.id) && awayFurniture.length > 0) {
                 const f =
                   awayFurniture[
                     Math.floor(Math.random() * awayFurniture.length)
@@ -2246,6 +2341,22 @@ function useAgentTick(
         bumpTalkUntil: now + BUMP_FREEZE_MS,
       };
     }
+    for (let index = 0; index < moved.length; index += 1) {
+      const agent = moved[index];
+      if (!isRemoteOfficeAgentId(agent.id)) continue;
+      const clamped = clampPointToZone(agent.x, agent.y, REMOTE_OFFICE_ZONE);
+      if (clamped.x === agent.x && clamped.y === agent.y) continue;
+      moved[index] = {
+        ...agent,
+        x: clamped.x,
+        y: clamped.y,
+        path: [],
+        targetX: clamped.x,
+        targetY: clamped.y,
+        state: agent.state === "walking" ? "standing" : agent.state,
+      };
+    }
+
     renderAgentsRef.current = moved;
     const renderAgentLookup = renderAgentLookupRef.current;
     renderAgentLookup.clear();
@@ -2286,6 +2397,70 @@ const getAgentInitials = (name: string | null | undefined): string => {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+};
+
+type DefaultWorkingArea = "desk" | "server_room" | "qa_lab" | "remote_district";
+
+const WORKING_DOC_KEYWORD_RE = /\b(doc|main)\b/i;
+const WORKING_QA_KEYWORD_RE =
+  /\b(qa|test|tester|analista|analyst|review|reviewer|pesquisador|research)\b/i;
+const WORKING_INFRA_KEYWORD_RE =
+  /\b(codex|coder|coordenador|coord|server|infra|ops|loop)\b/i;
+
+const hashAgentIdentity = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+};
+
+const buildDynamicMeetingOverflowSeat = (
+  centerX: number,
+  centerY: number,
+  overflowIndex: number,
+) => {
+  const ringIndex = Math.floor(overflowIndex / 6);
+  const slotIndex = overflowIndex % 6;
+  const radius = 132 + ringIndex * 34;
+  const angle = (-Math.PI / 2) + (slotIndex / 6) * Math.PI * 2;
+  const x = snap(centerX + Math.cos(angle) * radius);
+  const y = snap(centerY + Math.sin(angle) * radius);
+  return {
+    x,
+    y,
+    facing: Math.atan2(centerX - x, centerY - y),
+  };
+};
+
+const resolveDefaultWorkingArea = (params: {
+  agentId: string;
+  name: string;
+  hasAssignedDesk: boolean;
+  hasQaStations: boolean;
+  isRemoteOfficeAgent: boolean;
+}): DefaultWorkingArea => {
+  const identity = `${params.agentId} ${params.name}`;
+
+  if (params.hasAssignedDesk || WORKING_DOC_KEYWORD_RE.test(identity)) {
+    return "desk";
+  }
+
+  if (params.hasQaStations && WORKING_QA_KEYWORD_RE.test(identity)) {
+    return "qa_lab";
+  }
+
+  if (params.isRemoteOfficeAgent) {
+    return "remote_district";
+  }
+
+  if (WORKING_INFRA_KEYWORD_RE.test(identity)) {
+    return "server_room";
+  }
+
+  return hashAgentIdentity(params.agentId) % 2 === 0 && params.hasQaStations
+    ? "qa_lab"
+    : "server_room";
 };
 
 export function RetroOffice3D({
@@ -2472,6 +2647,7 @@ export function RetroOffice3D({
 
   const [furniture, setFurniture] = useState<FurnitureItem[]>(() =>
     ensureOfficeJukebox(
+      ensureOfficeConferenceLayout(
       ensureOfficeQaLab(
         ensureOfficeGymRoom(
           ensureOfficeServerRoom(
@@ -2488,6 +2664,7 @@ export function RetroOffice3D({
             ),
           ),
         ),
+      ),
       ),
     ),
   );
@@ -2678,6 +2855,10 @@ export function RetroOffice3D({
 
   useEffect(() => {
     markQaLabMigrationApplied(storageNamespace);
+  }, [storageNamespace]);
+
+  useEffect(() => {
+    markConferenceLayoutMigrationApplied(storageNamespace);
   }, [storageNamespace]);
 
   useEffect(() => {
@@ -3008,14 +3189,66 @@ export function RetroOffice3D({
     githubImmersive ||
     qaImmersive ||
     standupImmersive;
-  const compactRosterAgents = useMemo(
-    () => agents.slice(0, COMPACT_AGENT_BADGE_LIMIT),
-    [agents],
-  );
-  const hiddenAgentCount = Math.max(
-    0,
-    agents.length - compactRosterAgents.length,
-  );
+  const normalizeRosterIdentity = (agent: { id: string; name: string }) => {
+    const normalizedName = agent.name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+    if (normalizedName) {
+      return `${isRemoteOfficeAgentId(agent.id) ? "remote" : "local"}:${normalizedName}`;
+    }
+    const normalizedId = agent.id.replace(/^remote:/, "").trim().toLowerCase();
+    return `${isRemoteOfficeAgentId(agent.id) ? "remote" : "local"}:${normalizedId}`;
+  };
+  // The compact initials roster should represent the visible fleet from both MCs,
+  // but only once per agent identity.
+  const rosterAgents = useMemo(() => {
+    const deduped = new Map<string, (typeof agents)[number]>();
+    for (const agent of agents) {
+      const key = normalizeRosterIdentity(agent);
+      if (!deduped.has(key)) {
+        deduped.set(key, agent);
+      }
+    }
+    return Array.from(deduped.values());
+  }, [agents]);
+  // Ordena os agentes visiveis priorizando atividade real no roster:
+  // working primeiro, depois error, depois idle.
+  const sortedAgents = useMemo(() => {
+    const statusPriority: Record<string, number> = {
+      working: 0,
+      error: 1,
+      idle: 2,
+    };
+    return [...rosterAgents].sort((a, b) => {
+      const statusA = agentStatusLookup[a.id]?.working
+        ? "working"
+        : agentStatusLookup[a.id]?.isError
+          ? "error"
+          : "idle";
+      const statusB = agentStatusLookup[b.id]?.working
+        ? "working"
+        : agentStatusLookup[b.id]?.isError
+          ? "error"
+          : "idle";
+      const priorityDiff = statusPriority[statusA] - statusPriority[statusB];
+      if (priorityDiff !== 0) return priorityDiff;
+      return (a.name ?? "").localeCompare(b.name ?? "");
+    });
+  }, [agentStatusLookup, rosterAgents]);
+
+  // Exibe todos os agentes ordenados no resumo compacto.
+  const compactRosterAgents = sortedAgents;
+  const hiddenAgentCount = 0; // Não há mais agentes ocultos
+  const compactRosterAvatarSize = compactRosterAgents.length >= 18
+    ? 26
+    : compactRosterAgents.length >= 15
+      ? 30
+      : 36;
+  const compactRosterFontSize = compactRosterAgents.length >= 18 ? 12 : 16;
+  const compactRosterDotSize = compactRosterAgents.length >= 18 ? 7 : 10;
   const standupActive =
     standupMeeting?.phase === "gathering" ||
     standupMeeting?.phase === "in_progress";
@@ -3023,6 +3256,68 @@ export function RetroOffice3D({
     standupMeeting?.cards.find(
       (card) => card.agentId === standupMeeting.currentSpeakerAgentId,
     ) ?? null;
+  const officeMoment = useMemo(() => {
+    const totalAgents = Math.max(agents.length, 1);
+    const workingCount = agents.filter((agent) => agent.status === "working").length;
+    const errorCount = agents.filter((agent) => agent.status === "error").length;
+    const workingRatio = workingCount / totalAgents;
+    const errorRatio = errorCount / totalAgents;
+    const hour = new Date().getHours();
+    const isNightShift = hour < 6 || hour >= 22;
+
+    if (errorRatio >= 0.18) {
+      return {
+        ambientIntensity: 0.58,
+        ambientColor: "#d9c5c0",
+        keyLightIntensity: 1.16,
+        keyLightColor: "#ffd8d0",
+        fillLightIntensity: 0.52,
+        fillLightColor: "#ff7a7a",
+      };
+    }
+
+    if (standupActive) {
+      return {
+        ambientIntensity: 0.78,
+        ambientColor: "#e0d7c6",
+        keyLightIntensity: 1.22,
+        keyLightColor: "#fff0cf",
+        fillLightIntensity: 0.38,
+        fillLightColor: "#8fc8ff",
+      };
+    }
+
+    if (isNightShift) {
+      return {
+        ambientIntensity: 0.46,
+        ambientColor: "#b8c4d9",
+        keyLightIntensity: 0.92,
+        keyLightColor: "#dce8ff",
+        fillLightIntensity: 0.44,
+        fillLightColor: "#5bc0eb",
+      };
+    }
+
+    if (workingRatio >= 0.55) {
+      return {
+        ambientIntensity: 0.76,
+        ambientColor: "#d8d2c4",
+        keyLightIntensity: 1.18,
+        keyLightColor: "#fff3df",
+        fillLightIntensity: 0.46,
+        fillLightColor: "#7db8ff",
+      };
+    }
+
+    return {
+      ambientIntensity: 0.72,
+      ambientColor: "#d8d4c8",
+      keyLightIntensity: 1.1,
+      keyLightColor: "#f6f1e6",
+      fillLightIntensity: 0.4,
+      fillLightColor: "#7090ff",
+    };
+  }, [agents, standupActive]);
   const activeMonitorComputer = useMemo(() => {
     if (!monitorAgentId) return null;
     const deskIdx = assignedDeskIndexByAgentId[monitorAgentId];
@@ -5072,12 +5367,14 @@ export function RetroOffice3D({
               agentLookupRef={renderAgentLookupRef}
             />
 
-            {/* Keep office lighting static to avoid extra scene churn from ambience effects. */}
-            <ambientLight intensity={0.72} color="#d8d4c8" />
+            <ambientLight
+              intensity={officeMoment.ambientIntensity}
+              color={officeMoment.ambientColor}
+            />
             <directionalLight
               position={[8, 14, 6]}
-              intensity={1.1}
-              color="#f6f1e6"
+              intensity={officeMoment.keyLightIntensity}
+              color={officeMoment.keyLightColor}
               castShadow
               shadow-mapSize={[1024, 1024]}
               shadow-bias={-0.0002}
@@ -5085,8 +5382,8 @@ export function RetroOffice3D({
             />
             <directionalLight
               position={[-5, 8, -4]}
-              intensity={0.4}
-              color="#7090ff"
+              intensity={officeMoment.fillLightIntensity}
+              color={officeMoment.fillLightColor}
             />
 
             {/* Floor + walls — always visible, no async loading. */}
@@ -5570,11 +5867,33 @@ export function RetroOffice3D({
 
             <ScenePingPongBall agentsRef={renderAgentsRef} />
 
+            <AgentStatusAuraOverlay agentsRef={renderAgentsRef} />
+
+            <OfficeActivityPulseOverlay agentsRef={renderAgentsRef} />
+
+            <AdaptiveDistrictLabelOverlay agentsRef={renderAgentsRef} />
+
+            <AgentHierarchyPinOverlay
+              agentsRef={renderAgentsRef}
+              agents={agents}
+              currentSpeakerAgentId={standupMeeting?.currentSpeakerAgentId ?? null}
+            />
+
+            <AgentCollaborationLinkOverlay agentsRef={renderAgentsRef} />
+
+            <DeskOccupancyBeaconOverlay
+              deskLocations={deskLocations}
+              agents={agents}
+              deskByAgentRef={deskByAgentRef}
+              renderAgentsRef={renderAgentsRef}
+            />
+
             {/* Idea 7: Desk nameplates — small labels showing assigned agent above each desk. */}
             <DeskNameplateOverlay
               deskLocations={deskLocations}
               agents={agents}
               deskByAgentRef={deskByAgentRef}
+              renderAgentsRef={renderAgentsRef}
             />
 
             {/* New Idea 5: Agent color trails while walking. */}
@@ -5726,76 +6045,87 @@ export function RetroOffice3D({
       {/* Agent roster — compact top summary with overflow panel. */}
       {!readOnly && !immersiveOverlayActive ? (
         <div className="absolute top-10 left-1/2 z-20 -translate-x-1/2">
-          <div className="flex items-center gap-2 rounded-full border border-amber-900/25 bg-[#1c1610]/92 px-2 py-2 shadow-lg backdrop-blur-sm">
-            <div className="flex items-center -space-x-1.5">
-              {compactRosterAgents.map((agent) => {
-                const status = agentStatusLookup[agent.id];
-                const isError = status?.isError ?? agent.status === "error";
-                const working = status?.working ?? agent.status === "working";
-                const isRemoteAgent = isRemoteOfficeAgentId(agent.id);
-                const mood = moodByAgentId[agent.id];
-                const dotClass = isError
-                  ? "bg-red-400"
-                  : working
-                    ? "bg-green-400"
-                    : "bg-yellow-400";
-                return (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    title={agent.name}
-                    onMouseEnter={() => handleAgentHover(agent.id)}
-                    onMouseLeave={handleAgentUnhover}
-                    onClick={() => {
-                      setSpotlightAgentId(agent.id);
-                      if (!isRemoteAgent) {
-                        onAgentEdit?.(agent.id);
-                      }
-                    }}
-                    className={`relative flex h-8 w-8 items-center justify-center rounded-full border text-[9px] font-bold text-[#120e08] shadow transition-transform hover:-translate-y-0.5 ${
-                      spotlightAgentId === agent.id
-                        ? "border-amber-200/80 ring-2 ring-amber-200/20"
-                        : "border-[#120e08] hover:border-amber-200/50"
-                    }`}
-                    style={{ backgroundColor: agent.color }}
-                  >
-                    {/* E3 Idea 1: Mood emoji float. */}
-                    {mood ? (
+          <div className="inline-flex max-w-[min(96vw,1320px)] items-center gap-1.5 rounded-full border border-amber-900/25 bg-[#1c1610]/92 px-1.5 py-1.5 shadow-lg backdrop-blur-sm">
+            <div className="min-w-0 overflow-x-auto overflow-y-visible pr-0.5">
+              <div className="inline-flex min-w-max items-center gap-0 whitespace-nowrap">
+                {compactRosterAgents.map((agent) => {
+                  const status = agentStatusLookup[agent.id];
+                  const isError = status?.isError ?? agent.status === "error";
+                  const working = status?.working ?? agent.status === "working";
+                  const isRemoteAgent = isRemoteOfficeAgentId(agent.id);
+                  const mood = moodByAgentId[agent.id];
+                  const dotClass = isError
+                    ? "bg-red-400"
+                    : working
+                      ? "bg-green-400"
+                      : "bg-yellow-400";
+                  return (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      title={agent.name}
+                      onMouseEnter={() => handleAgentHover(agent.id)}
+                      onMouseLeave={handleAgentUnhover}
+                      onClick={() => {
+                        setSpotlightAgentId(agent.id);
+                        if (!isRemoteAgent) {
+                          onAgentEdit?.(agent.id);
+                        }
+                      }}
+                      className={`relative shrink-0 flex items-center justify-center rounded-full border font-bold text-[#120e08] shadow transition-transform hover:-translate-y-0.5 ${
+                        spotlightAgentId === agent.id
+                          ? "border-amber-200/80 ring-2 ring-amber-200/20"
+                          : "border-[#120e08] hover:border-amber-200/50"
+                      }`}
+                      style={{
+                        backgroundColor: agent.color,
+                        width: compactRosterAvatarSize,
+                        height: compactRosterAvatarSize,
+                        fontSize: compactRosterFontSize,
+                      }}
+                    >
+                      {/* E3 Idea 1: Mood emoji float. */}
+                      {mood ? (
+                        <span
+                          key={mood.ts}
+                          className="absolute -top-6 left-1/2 -translate-x-1/2 text-sm pointer-events-none"
+                          style={{
+                            animation: "mood-float 2.5s ease-out forwards",
+                          }}
+                        >
+                          {mood.emoji}
+                        </span>
+                      ) : null}
+                      <span>{getAgentInitials(agent.name)}</span>
                       <span
-                        key={mood.ts}
-                        className="absolute -top-6 left-1/2 -translate-x-1/2 text-sm pointer-events-none"
+                        className={`absolute -bottom-0.5 -right-0.5 rounded-full border border-[#1c1610] ${dotClass}`}
                         style={{
-                          animation: "mood-float 2.5s ease-out forwards",
+                          width: compactRosterDotSize,
+                          height: compactRosterDotSize,
                         }}
-                      >
-                        {mood.emoji}
-                      </span>
-                    ) : null}
-                    <span>{getAgentInitials(agent.name)}</span>
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-[#1c1610] ${dotClass}`}
-                    />
+                      />
+                    </button>
+                  );
+                })}
+                {hiddenAgentCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setAgentRosterOpen(true)}
+                    className="flex h-8 min-w-8 items-center justify-center rounded-full border border-amber-900/30 bg-[#120e08] px-2 text-[10px] font-semibold text-amber-200 transition-colors hover:border-amber-500/40 hover:text-white"
+                  >
+                    +{hiddenAgentCount}
                   </button>
-                );
-              })}
-              {hiddenAgentCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setAgentRosterOpen(true)}
-                  className="flex h-8 min-w-8 items-center justify-center rounded-full border border-amber-900/30 bg-[#120e08] px-2 text-[10px] font-semibold text-amber-200 transition-colors hover:border-amber-500/40 hover:text-white"
-                >
-                  +{hiddenAgentCount}
-                </button>
-              ) : null}
+                ) : null}
+              </div>
             </div>
 
             <button
               type="button"
               onClick={() => setAgentRosterOpen((prev) => !prev)}
-              className="inline-flex items-center gap-2 rounded-full border border-amber-900/25 bg-black/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-amber-100 transition-colors hover:border-amber-500/35 hover:text-white"
+              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-amber-900/25 bg-black/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-amber-100 transition-colors hover:border-amber-500/35 hover:text-white"
             >
               <Users className="h-3.5 w-3.5" />
-              <span>{agents.length}</span>
+              <span>{rosterAgents.length}</span>
               <span className="hidden sm:inline">agents</span>
             </button>
           </div>
@@ -5821,8 +6151,8 @@ export function RetroOffice3D({
                 </button>
               </div>
 
-              <div className="grid max-h-[min(60vh,420px)] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                {agents.map((agent) => {
+              <div className="grid max-h-[min(60vh,420px)] gap-2 overflow-y-auto pr-1 grid-cols-1">
+                {sortedAgents.map((agent) => {
                   const status = agentStatusLookup[agent.id];
                   const isError = status?.isError ?? agent.status === "error";
                   const working = status?.working ?? agent.status === "working";
@@ -6083,23 +6413,7 @@ export function RetroOffice3D({
           );
         })()}
 
-      {!immersiveOverlayActive &&
-      githubReviewAgentId &&
-      !githubCommandArrived ? (
-        <div className="pointer-events-none absolute top-16 left-1/2 z-20 -translate-x-1/2">
-          <div className="rounded-full border border-cyan-300/18 bg-[#06101f]/88 px-4 py-2 text-[11px] uppercase tracking-[0.22em] text-cyan-100/78 backdrop-blur-sm">
-            Agent walking to the Code Review room.
-          </div>
-        </div>
-      ) : null}
 
-      {!immersiveOverlayActive && qaTestingAgentId && !qaCommandArrived ? (
-        <div className="pointer-events-none absolute top-28 left-1/2 z-20 -translate-x-1/2">
-          <div className="rounded-full border border-violet-300/20 bg-[#12091d]/88 px-4 py-2 text-[11px] uppercase tracking-[0.22em] text-violet-100/80 backdrop-blur-sm">
-            Agent walking to the QA Lab.
-          </div>
-        </div>
-      ) : null}
 
       {monitorImmersive ? (
         <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">

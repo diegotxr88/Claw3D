@@ -167,6 +167,43 @@ function OfficeFlagPole({
   );
 }
 
+function DistrictBeacon({
+  position,
+  glowColor,
+  baseColor = "#2a2118",
+}: {
+  position: [number, number, number];
+  glowColor: string;
+  baseColor?: string;
+}) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.08, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.11, 0.13, 0.16, 14]} />
+        <meshStandardMaterial color={baseColor} roughness={0.88} metalness={0.16} />
+      </mesh>
+      <mesh position={[0, 0.28, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.03, 0.04, 0.24, 12]} />
+        <meshStandardMaterial color="#c5ced8" roughness={0.28} metalness={0.84} />
+      </mesh>
+      <mesh position={[0, 0.46, 0]}>
+        <sphereGeometry args={[0.07, 16, 16]} />
+        <meshStandardMaterial
+          color={glowColor}
+          emissive={glowColor}
+          emissiveIntensity={0.65}
+          roughness={0.24}
+          metalness={0.12}
+        />
+      </mesh>
+      <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.16, 0.24, 28]} />
+        <meshBasicMaterial color={glowColor} transparent opacity={0.16} side={2} />
+      </mesh>
+    </group>
+  );
+}
+
 export const FloorAndWalls = memo(function FloorAndWalls({
   showRemoteOffice = true,
 }: {
@@ -193,10 +230,80 @@ export const FloorAndWalls = memo(function FloorAndWalls({
     (CITY_PATH_ZONE.minX + CITY_PATH_ZONE.maxX) / 2,
     (CITY_PATH_ZONE.minY + CITY_PATH_ZONE.maxY) / 2,
   );
+  const conferenceZone = {
+    minX: 0,
+    maxX: 340,
+    minY: 0,
+    maxY: 260,
+  };
+  const localExecutionZone = {
+    minX: 60,
+    maxX: 840,
+    minY: 250,
+    maxY: 610,
+  };
+  const deskRows = [
+    { minX: 80, maxX: 800, minY: 272, maxY: 352 },
+    { minX: 80, maxX: 800, minY: 472, maxY: 552 },
+  ] as const;
+  const leadershipZone = {
+    minX: 380,
+    maxX: 610,
+    minY: 20,
+    maxY: 180,
+  };
+  const [conferenceZoneCenterX, , conferenceZoneCenterZ] = toWorld(
+    (conferenceZone.minX + conferenceZone.maxX) / 2,
+    (conferenceZone.minY + conferenceZone.maxY) / 2,
+  );
+  const [localExecutionCenterX, , localExecutionCenterZ] = toWorld(
+    (localExecutionZone.minX + localExecutionZone.maxX) / 2,
+    (localExecutionZone.minY + localExecutionZone.maxY) / 2,
+  );
+  const [leadershipZoneCenterX, , leadershipZoneCenterZ] = toWorld(
+    (leadershipZone.minX + leadershipZone.maxX) / 2,
+    (leadershipZone.minY + leadershipZone.maxY) / 2,
+  );
+  const [conferenceBeaconLeftX, , conferenceBeaconLeftZ] = toWorld(
+    conferenceZone.minX + 40,
+    conferenceZone.maxY - 38,
+  );
+  const [conferenceBeaconRightX, , conferenceBeaconRightZ] = toWorld(
+    conferenceZone.maxX - 40,
+    conferenceZone.maxY - 38,
+  );
+  const [localExecutionBeaconLeftX, , localExecutionBeaconLeftZ] = toWorld(
+    localExecutionZone.minX + 38,
+    localExecutionZone.minY + 34,
+  );
+  const [localExecutionBeaconRightX, , localExecutionBeaconRightZ] = toWorld(
+    localExecutionZone.maxX - 38,
+    localExecutionZone.minY + 34,
+  );
+  const [qaBeaconX, , qaBeaconZ] = toWorld(
+    QA_LAB_X + QA_LAB_WIDTH - 54,
+    EAST_WING_ROOM_TOP_Y + 58,
+  );
+  const [gymBeaconX, , gymBeaconZ] = toWorld(
+    GYM_ROOM_X + 54,
+    EAST_WING_ROOM_TOP_Y + 58,
+  );
   const [, , remoteOfficeCenterZ] = toWorld(
     (REMOTE_OFFICE_ZONE.minX + REMOTE_OFFICE_ZONE.maxX) / 2,
     (REMOTE_OFFICE_ZONE.minY + REMOTE_OFFICE_ZONE.maxY) / 2,
   );
+  const conferenceZoneWidth =
+    (conferenceZone.maxX - conferenceZone.minX) * SCALE;
+  const conferenceZoneHeight =
+    (conferenceZone.maxY - conferenceZone.minY) * SCALE;
+  const localExecutionZoneWidth =
+    (localExecutionZone.maxX - localExecutionZone.minX) * SCALE;
+  const localExecutionZoneHeight =
+    (localExecutionZone.maxY - localExecutionZone.minY) * SCALE;
+  const leadershipZoneWidth = (leadershipZone.maxX - leadershipZone.minX) * SCALE;
+  const leadershipZoneHeight = (leadershipZone.maxY - leadershipZone.minY) * SCALE;
+  const remoteOfficeBandWidth = localOfficeWidth * 0.92;
+  const remoteOfficeBandHeight = localOfficeHeight * 0.12;
   const gymZoneWidth = Math.max(0, GYM_ROOM_WIDTH * SCALE);
   const qaZoneWidth = Math.max(0, QA_LAB_WIDTH * SCALE);
   const roomZoneHeight = EAST_WING_ROOM_HEIGHT * SCALE;
@@ -388,6 +495,77 @@ export const FloorAndWalls = memo(function FloorAndWalls({
         </>
       ) : null}
 
+      {conferenceZoneWidth > 0 && conferenceZoneHeight > 0 ? (
+        <>
+          <mesh
+            position={[conferenceZoneCenterX, 0.0025, conferenceZoneCenterZ]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            receiveShadow
+          >
+            <planeGeometry
+              args={[conferenceZoneWidth * 0.88, conferenceZoneHeight * 0.82]}
+            />
+            <meshStandardMaterial
+              color="#7b5b45"
+              roughness={0.96}
+              metalness={0.03}
+            />
+          </mesh>
+          <mesh
+            position={[conferenceZoneCenterX, 0.0035, conferenceZoneCenterZ]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            receiveShadow
+          >
+            <ringGeometry args={[0.85, 1.3, 48]} />
+            <meshBasicMaterial
+              color="#d4b483"
+              transparent
+              opacity={0.3}
+              side={2}
+            />
+          </mesh>
+          {showRemoteOffice ? (
+            <>
+              <mesh
+                position={[
+                  conferenceZoneCenterX,
+                  0.0025,
+                  conferenceZoneCenterZ + remoteOfficeOffsetZ,
+                ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
+              >
+                <planeGeometry
+                  args={[conferenceZoneWidth * 0.88, conferenceZoneHeight * 0.82]}
+                />
+                <meshStandardMaterial
+                  color="#6d5846"
+                  roughness={0.96}
+                  metalness={0.03}
+                />
+              </mesh>
+              <mesh
+                position={[
+                  conferenceZoneCenterX,
+                  0.0035,
+                  conferenceZoneCenterZ + remoteOfficeOffsetZ,
+                ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
+              >
+                <ringGeometry args={[0.85, 1.3, 48]} />
+                <meshBasicMaterial
+                  color="#9ad1ff"
+                  transparent
+                  opacity={0.24}
+                  side={2}
+                />
+              </mesh>
+            </>
+          ) : null}
+        </>
+      ) : null}
+
       {qaZoneFloorWidth > 0 && roomZoneFloorHeight > 0 ? (
         <>
           <mesh
@@ -504,6 +682,355 @@ export const FloorAndWalls = memo(function FloorAndWalls({
               </group>
             );
           })}
+        </>
+      ) : null}
+
+      {localExecutionZoneWidth > 0 && localExecutionZoneHeight > 0 ? (
+        <>
+          <mesh
+            position={[localExecutionCenterX, 0.0025, localExecutionCenterZ]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            receiveShadow
+          >
+            <planeGeometry
+              args={[localExecutionZoneWidth * 0.96, localExecutionZoneHeight * 0.92]}
+            />
+            <meshStandardMaterial
+              color="#75563b"
+              roughness={0.94}
+              metalness={0.04}
+            />
+          </mesh>
+          <mesh
+            position={[localExecutionCenterX, 0.0035, localExecutionCenterZ]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            receiveShadow
+          >
+            <planeGeometry
+              args={[localExecutionZoneWidth * 0.88, localExecutionZoneHeight * 0.78]}
+            />
+            <meshStandardMaterial
+              color="#8e6b49"
+              roughness={0.9}
+              metalness={0.05}
+            />
+          </mesh>
+          {Array.from({ length: 4 }).map((_, index) => {
+            const laneX =
+              localExecutionCenterX -
+              localExecutionZoneWidth * 0.3 +
+              index * (localExecutionZoneWidth * 0.2);
+            return (
+              <mesh
+                key={`local-execution-lane-${index}`}
+                position={[laneX, 0.0045, localExecutionCenterZ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+              >
+                <planeGeometry args={[0.02, localExecutionZoneHeight * 0.72]} />
+                <meshBasicMaterial color="#f6bd60" transparent opacity={0.18} />
+              </mesh>
+            );
+          })}
+          {showRemoteOffice ? (
+            <>
+              <mesh
+                position={[
+                  localExecutionCenterX,
+                  0.0025,
+                  localExecutionCenterZ + remoteOfficeOffsetZ,
+                ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
+              >
+                <planeGeometry
+                  args={[localExecutionZoneWidth * 0.96, localExecutionZoneHeight * 0.92]}
+                />
+                <meshStandardMaterial
+                  color="#2d4c63"
+                  roughness={0.94}
+                  metalness={0.05}
+                />
+              </mesh>
+              <mesh
+                position={[
+                  localExecutionCenterX,
+                  0.0035,
+                  localExecutionCenterZ + remoteOfficeOffsetZ,
+                ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
+              >
+                <planeGeometry
+                  args={[localExecutionZoneWidth * 0.88, localExecutionZoneHeight * 0.78]}
+                />
+                <meshStandardMaterial
+                  color="#3c647f"
+                  roughness={0.9}
+                  metalness={0.08}
+                />
+              </mesh>
+              {Array.from({ length: 4 }).map((_, index) => {
+                const laneX =
+                  localExecutionCenterX -
+                  localExecutionZoneWidth * 0.3 +
+                  index * (localExecutionZoneWidth * 0.2);
+                return (
+                  <mesh
+                    key={`remote-execution-lane-${index}`}
+                    position={[laneX, 0.0045, localExecutionCenterZ + remoteOfficeOffsetZ]}
+                    rotation={[-Math.PI / 2, 0, 0]}
+                  >
+                    <planeGeometry args={[0.02, localExecutionZoneHeight * 0.72]} />
+                    <meshBasicMaterial color="#8fe3ff" transparent opacity={0.2} />
+                  </mesh>
+                );
+              })}
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      {deskRows.map((row, rowIndex) => {
+        const [rowCenterX, , rowCenterZ] = toWorld(
+          (row.minX + row.maxX) / 2,
+          (row.minY + row.maxY) / 2,
+        );
+        const rowWidth = (row.maxX - row.minX) * SCALE;
+        const rowHeight = (row.maxY - row.minY) * SCALE;
+        return (
+          <group key={`desk-row-${rowIndex}`}>
+            <mesh
+              position={[rowCenterX, 0.005, rowCenterZ]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              receiveShadow
+            >
+              <planeGeometry args={[rowWidth * 0.96, rowHeight * 0.84]} />
+              <meshStandardMaterial
+                color="#9b7449"
+                roughness={0.9}
+                metalness={0.06}
+              />
+            </mesh>
+            <mesh
+              position={[rowCenterX, 0.006, rowCenterZ]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <planeGeometry args={[rowWidth * 0.9, rowHeight * 0.08]} />
+              <meshBasicMaterial color="#ffe0b2" transparent opacity={0.18} />
+            </mesh>
+            {Array.from({ length: 4 }).map((_, deskIndex) => {
+              const nodeX =
+                rowCenterX - rowWidth * 0.32 + deskIndex * (rowWidth * 0.215);
+              return (
+                <mesh
+                  key={`desk-row-local-node-${rowIndex}-${deskIndex}`}
+                  position={[nodeX, 0.007, rowCenterZ]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                >
+                  <ringGeometry args={[0.1, 0.16, 24]} />
+                  <meshBasicMaterial color="#ffd166" transparent opacity={0.18} side={2} />
+                </mesh>
+              );
+            })}
+            {showRemoteOffice ? (
+              <>
+                <mesh
+                  position={[rowCenterX, 0.005, rowCenterZ + remoteOfficeOffsetZ]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  receiveShadow
+                >
+                  <planeGeometry args={[rowWidth * 0.96, rowHeight * 0.84]} />
+                  <meshStandardMaterial
+                    color="#416684"
+                    roughness={0.9}
+                    metalness={0.08}
+                  />
+                </mesh>
+                <mesh
+                  position={[rowCenterX, 0.006, rowCenterZ + remoteOfficeOffsetZ]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                >
+                  <planeGeometry args={[rowWidth * 0.9, rowHeight * 0.08]} />
+                  <meshBasicMaterial color="#d0f0ff" transparent opacity={0.18} />
+                </mesh>
+                {Array.from({ length: 4 }).map((_, deskIndex) => {
+                  const nodeX =
+                    rowCenterX - rowWidth * 0.32 + deskIndex * (rowWidth * 0.215);
+                  return (
+                    <mesh
+                      key={`desk-row-remote-node-${rowIndex}-${deskIndex}`}
+                      position={[nodeX, 0.007, rowCenterZ + remoteOfficeOffsetZ]}
+                      rotation={[-Math.PI / 2, 0, 0]}
+                    >
+                      <ringGeometry args={[0.1, 0.16, 24]} />
+                      <meshBasicMaterial
+                        color="#8fe3ff"
+                        transparent
+                        opacity={0.2}
+                        side={2}
+                      />
+                    </mesh>
+                  );
+                })}
+              </>
+            ) : null}
+          </group>
+        );
+      })}
+
+      {leadershipZoneWidth > 0 && leadershipZoneHeight > 0 ? (
+        <>
+          <mesh
+            position={[leadershipZoneCenterX, 0.003, leadershipZoneCenterZ]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            receiveShadow
+          >
+            <planeGeometry args={[leadershipZoneWidth * 0.92, leadershipZoneHeight * 0.82]} />
+            <meshStandardMaterial
+              color="#4f3627"
+              roughness={0.88}
+              metalness={0.08}
+            />
+          </mesh>
+          <mesh
+            position={[leadershipZoneCenterX, 0.004, leadershipZoneCenterZ]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <ringGeometry args={[0.42, 0.74, 40]} />
+            <meshBasicMaterial color="#ffd166" transparent opacity={0.2} side={2} />
+          </mesh>
+          {showRemoteOffice ? (
+            <>
+              <mesh
+                position={[
+                  leadershipZoneCenterX,
+                  0.003,
+                  leadershipZoneCenterZ + remoteOfficeOffsetZ,
+                ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
+              >
+                <planeGeometry
+                  args={[leadershipZoneWidth * 0.92, leadershipZoneHeight * 0.82]}
+                />
+                <meshStandardMaterial
+                  color="#28455a"
+                  roughness={0.9}
+                  metalness={0.1}
+                />
+              </mesh>
+              <mesh
+                position={[
+                  leadershipZoneCenterX,
+                  0.004,
+                  leadershipZoneCenterZ + remoteOfficeOffsetZ,
+                ]}
+                rotation={[-Math.PI / 2, 0, 0]}
+              >
+                <ringGeometry args={[0.42, 0.74, 40]} />
+                <meshBasicMaterial color="#b8f2ff" transparent opacity={0.22} side={2} />
+              </mesh>
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      {showRemoteOffice ? (
+        <mesh
+          position={[localOfficeCenterX, 0.003, localOfficeCenterZ + remoteOfficeOffsetZ]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          receiveShadow
+        >
+          <planeGeometry args={[remoteOfficeBandWidth, remoteOfficeBandHeight]} />
+          <meshStandardMaterial
+            color="#38536b"
+            roughness={0.92}
+            metalness={0.08}
+          />
+        </mesh>
+      ) : null}
+
+      <DistrictBeacon
+        position={[conferenceBeaconLeftX, 0, conferenceBeaconLeftZ]}
+        glowColor="#ffd166"
+        baseColor="#3b2a1b"
+      />
+      <DistrictBeacon
+        position={[conferenceBeaconRightX, 0, conferenceBeaconRightZ]}
+        glowColor="#ffd166"
+        baseColor="#3b2a1b"
+      />
+      <DistrictBeacon
+        position={[localExecutionBeaconLeftX, 0, localExecutionBeaconLeftZ]}
+        glowColor="#fbbf24"
+        baseColor="#42301f"
+      />
+      <DistrictBeacon
+        position={[localExecutionBeaconRightX, 0, localExecutionBeaconRightZ]}
+        glowColor="#fbbf24"
+        baseColor="#42301f"
+      />
+      <DistrictBeacon
+        position={[gymBeaconX, 0, gymBeaconZ]}
+        glowColor="#34d399"
+        baseColor="#1f3128"
+      />
+      <DistrictBeacon
+        position={[qaBeaconX, 0, qaBeaconZ]}
+        glowColor="#8b5cf6"
+        baseColor="#221733"
+      />
+      <DistrictBeacon
+        position={[leadershipZoneCenterX, 0, leadershipZoneCenterZ]}
+        glowColor="#ffe29a"
+        baseColor="#4a3424"
+      />
+
+      {showRemoteOffice ? (
+        <>
+          <DistrictBeacon
+            position={[conferenceBeaconLeftX, 0, conferenceBeaconLeftZ + remoteOfficeOffsetZ]}
+            glowColor="#8fe3ff"
+            baseColor="#183140"
+          />
+          <DistrictBeacon
+            position={[conferenceBeaconRightX, 0, conferenceBeaconRightZ + remoteOfficeOffsetZ]}
+            glowColor="#8fe3ff"
+            baseColor="#183140"
+          />
+          <DistrictBeacon
+            position={[
+              localExecutionBeaconLeftX,
+              0,
+              localExecutionBeaconLeftZ + remoteOfficeOffsetZ,
+            ]}
+            glowColor="#67e8f9"
+            baseColor="#1a3544"
+          />
+          <DistrictBeacon
+            position={[
+              localExecutionBeaconRightX,
+              0,
+              localExecutionBeaconRightZ + remoteOfficeOffsetZ,
+            ]}
+            glowColor="#67e8f9"
+            baseColor="#1a3544"
+          />
+          <DistrictBeacon
+            position={[gymBeaconX, 0, gymBeaconZ + remoteOfficeOffsetZ]}
+            glowColor="#6ee7b7"
+            baseColor="#19382f"
+          />
+          <DistrictBeacon
+            position={[qaBeaconX, 0, qaBeaconZ + remoteOfficeOffsetZ]}
+            glowColor="#a78bfa"
+            baseColor="#20193b"
+          />
+          <DistrictBeacon
+            position={[leadershipZoneCenterX, 0, leadershipZoneCenterZ + remoteOfficeOffsetZ]}
+            glowColor="#b8f2ff"
+            baseColor="#1d3948"
+          />
         </>
       ) : null}
 

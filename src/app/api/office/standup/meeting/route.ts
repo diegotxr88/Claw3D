@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 
 import {
   advanceStandupMeeting,
+  recoverStandupMeetingIfNeeded,
   startStandupSpeaker,
   updateStandupArrivals,
 } from "@/lib/office/standup/service";
 import {
   loadActiveStandupMeeting,
+  saveStandupMeeting,
   updateStandupMeeting,
 } from "@/lib/office/standup/store";
 
@@ -14,8 +16,12 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
+    const recoveredMeeting = recoverStandupMeetingIfNeeded(loadActiveStandupMeeting());
+    if (recoveredMeeting) {
+      saveStandupMeeting(recoveredMeeting);
+    }
     return NextResponse.json(
-      { meeting: loadActiveStandupMeeting() },
+      { meeting: recoveredMeeting },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
@@ -38,21 +44,26 @@ export async function PUT(request: Request) {
     }
     const store = updateStandupMeeting((meeting) => {
       if (!meeting) return null;
+      let nextMeeting = meeting;
       if (action === "arrivals") {
-        return updateStandupArrivals(meeting, body.arrivedAgentIds ?? []);
+        nextMeeting = updateStandupArrivals(meeting, body.arrivedAgentIds ?? []);
+        return recoverStandupMeetingIfNeeded(nextMeeting);
       }
       if (action === "start") {
         const speakerAgentId =
           typeof body.speakerAgentId === "string" ? body.speakerAgentId.trim() : null;
-        return startStandupSpeaker(meeting, speakerAgentId);
+        nextMeeting = startStandupSpeaker(meeting, speakerAgentId);
+        return recoverStandupMeetingIfNeeded(nextMeeting);
       }
       if (action === "advance") {
-        return advanceStandupMeeting(meeting);
+        nextMeeting = advanceStandupMeeting(meeting);
+        return recoverStandupMeetingIfNeeded(nextMeeting);
       }
       if (action === "complete") {
-        return startStandupSpeaker(meeting, null);
+        nextMeeting = startStandupSpeaker(meeting, null);
+        return recoverStandupMeetingIfNeeded(nextMeeting);
       }
-      return meeting;
+      return recoverStandupMeetingIfNeeded(nextMeeting);
     });
     return NextResponse.json(
       { meeting: store.activeMeeting },

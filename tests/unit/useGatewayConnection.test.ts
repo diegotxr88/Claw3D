@@ -128,11 +128,11 @@ describe("useGatewayConnection", () => {
     render(createElement(Probe));
 
     await waitFor(() => {
-      expect(screen.getByTestId("gatewayUrl")).toHaveTextContent("ws://localhost:18789");
+      expect(screen.getByTestId("gatewayUrl")).toHaveTextContent("ws://127.0.0.1:18789");
     });
   });
 
-  it("connects_via_studio_proxy_ws_and_does_not_pass_token", async () => {
+  it("connects_via_studio_proxy_ws_when_no_local_token_is_available", async () => {
     const { useGatewayConnection, captured } = await setupAndImportHook(null);
     const coordinator = {
       loadSettings: async () => null,
@@ -151,7 +151,53 @@ describe("useGatewayConnection", () => {
       expect(captured.url).toBe("ws://localhost:3000/api/gateway/ws");
     });
     expect(captured.token).toBe("");
-    expect(captured.authScopeKey).toBe("ws://localhost:18789");
+    expect(captured.authScopeKey).toBe("ws://127.0.0.1:18789");
+  });
+
+  it("connects_directly_to_local_gateway_when_local_token_is_saved", async () => {
+    const { useGatewayConnection, captured } = await setupAndImportHook(null);
+    const coordinator = {
+      loadSettings: async () => ({
+        version: 1,
+        gateway: { url: "ws://127.0.0.1:18789", token: "saved-local-token" },
+        focused: {},
+        avatars: {},
+        analytics: {},
+        voiceReplies: {},
+        office: {},
+        deskAssignments: {},
+        standup: {},
+      }),
+      loadSettingsEnvelope: async () => ({
+        settings: {
+          version: 1,
+          gateway: { url: "ws://127.0.0.1:18789", token: "saved-local-token" },
+          focused: {},
+          avatars: {},
+          analytics: {},
+          voiceReplies: {},
+          office: {},
+          deskAssignments: {},
+          standup: {},
+        },
+        localGatewayDefaults: { url: "ws://127.0.0.1:18789", token: "saved-local-token" },
+      }),
+      schedulePatch: () => {},
+      flushPending: async () => {},
+    };
+
+    const Probe = () => {
+      useGatewayConnection(coordinator);
+      return createElement("div", null, "ok");
+    };
+
+    render(createElement(Probe));
+
+    await waitFor(() => {
+      expect(captured.url).toBe("ws://127.0.0.1:18789");
+    });
+    expect(captured.token).toBe("saved-local-token");
+    expect(captured.authScopeKey).toBe("ws://127.0.0.1:18789");
   });
 
   it("auto_applies_runtime_local_defaults_when_no_saved_gateway_and_build_time_empty", async () => {

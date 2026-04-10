@@ -54,6 +54,7 @@ describe("GatewayBrowserClient", () => {
   afterEach(() => {
     vi.useRealTimers();
     globalThis.WebSocket = originalWebSocket;
+    window.localStorage.clear();
     if (globalThis.crypto) {
       Object.defineProperty(globalThis.crypto, "subtle", {
         value: originalSubtle,
@@ -105,6 +106,13 @@ describe("GatewayBrowserClient", () => {
     }
 
     ws.onopen?.();
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "event",
+        event: "connect.challenge",
+        payload: { nonce: "abc" },
+      }),
+    } as MessageEvent);
     vi.runAllTimers();
 
     const connectFrame = JSON.parse(MockWebSocket.sent[0] ?? "{}");

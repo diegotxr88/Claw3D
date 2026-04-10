@@ -168,7 +168,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object");
 
 const coerceString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "0.0.0.0"]);
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "0.0.0.0", "localhost"]);
 
 const normalizeGatewayUrl = (value: unknown) => {
   const url = coerceString(value);
@@ -182,7 +182,7 @@ const normalizeGatewayUrl = (value: unknown) => {
       parsed.username || parsed.password
         ? `${parsed.username}${parsed.password ? `:${parsed.password}` : ""}@`
         : "";
-    const host = parsed.port ? `localhost:${parsed.port}` : "localhost";
+    const host = parsed.port ? `127.0.0.1:${parsed.port}` : "127.0.0.1";
     const dropDefaultPath =
       parsed.pathname === "/" && !url.endsWith("/") && !parsed.search && !parsed.hash;
     const pathname = dropDefaultPath ? "" : parsed.pathname;
@@ -193,7 +193,7 @@ const normalizeGatewayUrl = (value: unknown) => {
 };
 
 const normalizeGatewayKey = (value: unknown) => {
-  const key = coerceString(value);
+  const key = normalizeGatewayUrl(value);
   return key ? key : null;
 };
 
@@ -746,7 +746,10 @@ const normalizeOffice = (value: unknown): Record<string, StudioOfficePreference>
   for (const [gatewayKeyRaw, officeRaw] of Object.entries(value)) {
     const gatewayKey = normalizeGatewayKey(gatewayKeyRaw);
     if (!gatewayKey) continue;
-    office[gatewayKey] = normalizeOfficePreference(officeRaw);
+    office[gatewayKey] = normalizeOfficePreference(
+      officeRaw,
+      office[gatewayKey] ?? defaultStudioOfficePreference()
+    );
   }
   return office;
 };
